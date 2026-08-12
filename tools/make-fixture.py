@@ -80,8 +80,25 @@ cov = Counter()
 for n in names:
     cov[round(G.coverage(n), 4)] += 1
 
+# --- and the photograph prep, on the same pixels ----------------------------
+import prep as PREP  # noqa: E402
+
+PREP_OPTS = dict(detail=0.55, dark=0.62, dark_gain=1.35, radius=0.030, sat=1.0)
+prep_png = os.path.join(a.out, "python-prepped.png")
+prep_mean, prep_cover = PREP.prep(png_path, prep_png, **PREP_OPTS)
+
+prep_rgb = np.asarray(Image.open(prep_png).convert("RGB"), dtype=np.uint8)
+with open(os.path.join(a.out, "prepped.raw"), "wb") as f:
+    f.write(prep_rgb.tobytes())
+
 stats = {
     "width": W, "height": H,
+    "prep": {
+        "options": {"detail": 0.55, "dark": 0.62, "darkGain": 1.35,
+                    "radius": 0.030, "warmSplit": 0.02, "saturation": 1.0},
+        "meanInk": prep_mean,
+        "coverage": prep_cover,
+    },
     "options": {**OPTS, "width": 1200, "knockout": False,
                 "figureBox": list(FIGURE)},
     "filled": filled,

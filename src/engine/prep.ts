@@ -51,44 +51,53 @@ const COOL = [70, 92, 170] as const
 const WARM = [196, 148, 58] as const
 const DEEP = [18, 26, 82] as const
 
-/** Separable box blur, three passes, which converges close enough to a
- *  Gaussian for a flat-field and costs the same whatever the radius. The
- *  radius that makes three boxes match a Gaussian of this sigma is
- *  (sqrt(4*sigma^2 + 1) - 1) / 2. */
-function blurLuma(src: Float32Array, w: number, h: number, sigma: number): Float32Array {
-  const r = Math.max(1, Math.round((Math.sqrt(4 * sigma * sigma + 1) - 1) / 2))
-  const a = Float32Array.from(src)
-  const b = new Float32Array(w * h)
-  for (let pass = 0; pass < 3; pass++) {
-    boxBlurH(a, b, w, h, r)
-    boxBlurV(b, a, w, h, r)
+/** Separable Gaussian blur with clamped edges.
+ *
+ * A three-pass box blur is the usual shortcut here and it is what this used
+ * first, but getting its running-sum bookkeeping exactly symmetric is fiddly
+ * and a subtle version of it shifted the result by two pixels and biased the
+ * flat-field badly. A real kernel is a few times slower and obviously correct,
+ * and prep runs once per image rather than once per slider drag.
+ *
+ * Matches PIL's ImageFilter.GaussianBlur, whose radius argument is the
+ * standard deviation, which is what the Python original passes it.
+ */
+export function blurLuma(src: Float32Array, w: number, h: number, sigma: number): Float32Array {
+  const radius = Math.max(1, Math.ceil(sigma * 3))
+  const k = new Float32Array(radius * 2 + 1)
+  let total = 0
+  for (let i = -radius; i <= radius; i++) {
+    const v = Math.exp(-(i * i) / (2 * sigma * sigma))
+    k[i + radius] = v
+    total += v
   }
-  return a
-}
+  for (let i = 0; i < k.length; i++) k[i] /= total
 
-function boxBlurH(src: Float32Array, dst: Float32Array, w: number, h: number, r: number) {
-  const norm = 1 / (r + r + 1)
+  const tmp = new Float32Array(w * h)
+  const out = new Float32Array(w * h)
+
   for (let y = 0; y < h; y++) {
     const row = y * w
-    let sum = src[row] * (r + 1)
-    for (let x = 0; x < r; x++) sum += src[row + Math.min(x, w - 1)]
     for (let x = 0; x < w; x++) {
-      sum += src[row + Math.min(x + r, w - 1)] - src[row + Math.max(x - r, 0)]
-      dst[row + x] = sum * norm
+      let sum = 0
+      for (let i = -radius; i <= radius; i++) {
+        sum += src[row + Math.min(w - 1, Math.max(0, x + i))] * k[i + radius]
+      }
+      tmp[row + x] = sum
     }
   }
-}
 
-function boxBlurV(src: Float32Array, dst: Float32Array, w: number, h: number, r: number) {
-  const norm = 1 / (r + r + 1)
   for (let x = 0; x < w; x++) {
-    let sum = src[x] * (r + 1)
-    for (let y = 0; y < r; y++) sum += src[Math.min(y, h - 1) * w + x]
     for (let y = 0; y < h; y++) {
-      sum += src[Math.min(y + r, h - 1) * w + x] - src[Math.max(y - r, 0) * w + x]
-      dst[y * w + x] = sum * norm
+      let sum = 0
+      for (let i = -radius; i <= radius; i++) {
+        sum += tmp[Math.min(h - 1, Math.max(0, y + i)) * w + x] * k[i + radius]
+      }
+      out[y * w + x] = sum
     }
   }
+
+  return out
 }
 
 export interface PrepResult {

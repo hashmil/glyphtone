@@ -70,6 +70,18 @@
   },
   "outHeight": 1200,
   "outWidth": 1200,
+  "prep": {
+    "coverage": 0.37998046875,
+    "meanInk": 0.19637068094443605,
+    "options": {
+      "dark": 0.62,
+      "darkGain": 1.35,
+      "detail": 0.55,
+      "radius": 0.03,
+      "saturation": 1.0,
+      "warmSplit": 0.02
+    }
+  },
   "total": 14400,
   "width": 320
 }
