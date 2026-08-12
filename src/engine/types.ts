@@ -13,15 +13,23 @@ export interface GlyphSet {
 /** Pale-to-deep colour ramp for one zone, as RGB 0-255. */
 export type Ramp = [readonly [number, number, number], readonly [number, number, number]]
 
-export interface Zone {
-  id: string
-  label: string
-  ramp: Ramp
-  /** motif families and bare glyph names; families expand to their weights */
-  motifs: string[]
-}
+/** How marks are placed.
+ *
+ * `grid` puts one icon per cell of a fixed lattice, so nothing overlaps and
+ * the result reads as ordered. `organic` scatters them by importance sampling
+ * at several scales with varying size and overlap, which is messier and is the
+ * only way to reach a genuinely near-black core, since a non-overlapping grid
+ * is capped by the coverage of its heaviest single glyph.
+ */
+export type Method = 'grid' | 'organic'
 
 export interface MosaicOptions {
+  method: Method
+  /** organic only: how many marks get placed, scaling every pass together */
+  density: number
+  /** organic only: how strongly local darkness picks a heavier glyph versus
+   *  picking at random */
+  weightBias: number
   /** cells across. The single strongest control over how the piece reads. */
   cols: number
   /** output width in px. Height follows the source aspect. */
@@ -54,6 +62,9 @@ export interface Placement {
   r: number
   g: number
   b: number
+  /** set for text packs (emoji), which draw as themselves in their own colour
+   *  rather than as a tinted shape */
+  char?: string
 }
 
 export interface MosaicResult {

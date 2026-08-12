@@ -17,7 +17,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { buildMosaic, toDensityMaps, DEFAULT_OPTIONS } from './mosaic'
-import { DEFAULT_SET, coverageTable } from './glyphs'
+import { PACKS } from './packs'
 import { PALETTES } from './palettes'
 import type { MosaicOptions } from './types'
 
@@ -49,9 +49,10 @@ function run() {
     valnoise: o.valnoise, knockout: o.knockout,
     figureBox: o.figureBox as [number, number, number, number],
   }
-  // 'desert' carries the ramps and zone vocabularies the prototype hardcoded.
+  // 'motifs' is the prototype's hand-drawn vocabulary, 'desert' its ramps.
+  const pack = PACKS.find((p) => p.id === 'motifs')!
   const palette = PALETTES.find((p) => p.id === 'desert')!
-  return buildMosaic(maps, DEFAULT_SET, palette, opts)
+  return buildMosaic(maps, pack, palette, opts)
 }
 
 describe('mosaic engine vs the Python prototype', () => {
@@ -70,7 +71,7 @@ describe('mosaic engine vs the Python prototype', () => {
   })
 
   it('lands on the same mean ink coverage', () => {
-    const covs = coverageTable(DEFAULT_SET)
+    const covs = PACKS.find((p) => p.id === 'motifs')!.coverages
     const mean =
       result.placements.reduce((s, p) => s + covs[p.glyph], 0) / result.placements.length
     expect(mean).toBeCloseTo(stats.meanCoverage, 2)
@@ -80,7 +81,8 @@ describe('mosaic engine vs the Python prototype', () => {
     // Different RNG picks different members of a tie, so this is a range and
     // not an equality. A collapse to a handful would mean --vary is broken.
     expect(result.used.size).toBeGreaterThanOrEqual(stats.glyphCount - 6)
-    expect(result.used.size).toBeLessThanOrEqual(Object.keys(DEFAULT_SET.glyphs).length)
+    expect(result.used.size).toBeLessThanOrEqual(
+      Object.keys(PACKS.find((p) => p.id === 'motifs')!.set.glyphs).length)
   })
 
   it('is deterministic for a given seed', () => {

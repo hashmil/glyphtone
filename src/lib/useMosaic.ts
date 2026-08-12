@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { buildMosaic, toDensityMaps, DEFAULT_OPTIONS } from '@/engine/mosaic'
-import { DEFAULT_SET } from '@/engine/glyphs'
+import { build } from '@/engine/build'
+import { toDensityMaps, DEFAULT_OPTIONS, type DensityMaps } from '@/engine/mosaic'
+import { PACKS, DEFAULT_PACK } from '@/engine/packs'
 import { PALETTES, DEFAULT_PALETTE } from '@/engine/palettes'
 import { DEFAULT_PRESET, PRESETS } from '@/engine/presets'
 import { prepPhoto, DEFAULT_PREP, type PrepOptions } from '@/engine/prep'
@@ -12,84 +13,108 @@ import { looksLikePhoto, type SourcePixels } from './image'
  *  so the preview and the export differ only in output resolution. */
 const PREVIEW_WIDTH = 1600
 
-export interface MosaicState {
-  source: SourcePixels | null
-  result: MosaicResult | null
-  options: MosaicOptions
-  paletteId: string
-  presetId: string
-  prep: PrepOptions
-  prepEnabled: boolean
-  /** set when the source looks like a photo but prep is off, so the UI can say
-   *  so rather than letting the user wonder why it reads as a slab */
-  suggestPrep: boolean
-  busy: boolean
-  buildMs: number
+/** What the app is doing, so the UI can say so instead of freezing.
+ *
+ * Preparing a photograph blurs the whole frame and building a dense mosaic
+ * places six figures of marks. Neither is slow enough to need a worker, but
+ * both are long enough that going silent looks broken, especially on a phone.
+ */
+export type Status = 'idle' | 'reading' | 'preparing' | 'building'
+
+export const STATUS_LABEL: Record<Exclude<Status, 'idle'>, string> = {
+  reading: 'Reading image',
+  preparing: 'Preparing photograph',
+  building: 'Placing icons',
 }
+
+/** Let the browser paint before starting synchronous work, so a spinner that
+ *  was just set actually appears rather than being batched away behind it. */
+const yieldToPaint = () =>
+  new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)))
 
 export function useMosaic() {
   const [source, setSource] = useState<SourcePixels | null>(null)
   const [result, setResult] = useState<MosaicResult | null>(null)
+  const [maps, setMaps] = useState<DensityMaps | null>(null)
   const [options, setOptions] = useState<MosaicOptions>({
     ...DEFAULT_OPTIONS,
     ...DEFAULT_PRESET.options,
     width: PREVIEW_WIDTH,
   })
+  const [packId, setPackId] = useState(DEFAULT_PACK.id)
   const [paletteId, setPaletteId] = useState(DEFAULT_PALETTE.id)
   const [presetId, setPresetId] = useState(DEFAULT_PRESET.id)
   const [prep, setPrep] = useState<PrepOptions>(DEFAULT_PREP)
   const [prepEnabled, setPrepEnabled] = useState(false)
   const [suggestPrep, setSuggestPrep] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<Status>('idle')
   const [buildMs, setBuildMs] = useState(0)
 
+  const pack = useMemo(() => PACKS.find((p) => p.id === packId) ?? DEFAULT_PACK, [packId])
   const palette = useMemo(
     () => PALETTES.find((p) => p.id === paletteId) ?? DEFAULT_PALETTE,
     [paletteId],
   )
 
-  /** Prep is the expensive half and only depends on the photo controls, so it
-   *  is cached separately from the mosaic. Dragging a density slider should
-   *  not re-run a blur over two megapixels. */
-  const prepped = useMemo(() => {
-    if (!source) return null
-    if (!prepEnabled) return source
-    const out = prepPhoto(source.data, source.width, source.height, prep)
-    return { data: out.data, width: source.width, height: source.height }
-  }, [source, prepEnabled, prep])
+  // Prep is the expensive half and depends only on the photo controls, so it
+  // is cached against them. Dragging a density slider must not re-run a blur
+  // over two megapixels.
+  const prepKey = prepEnabled ? JSON.stringify(prep) : 'off'
+  const prepCache = useRef<{ key: string; src: SourcePixels | null; maps: DensityMaps } | null>(null)
 
-  const maps = useMemo(
-    () => (prepped ? toDensityMaps(prepped.data, prepped.width, prepped.height) : null),
-    [prepped],
-  )
+  const run = useRef(0)
 
-  // Debounced rebuild. The engine is fast enough that this is about not
-  // blocking paint mid-drag rather than about the build itself being slow.
-  const timer = useRef<number | undefined>(undefined)
   useEffect(() => {
-    if (!maps) {
+    if (!source) {
       setResult(null)
+      setMaps(null)
       return
     }
-    setBusy(true)
-    window.clearTimeout(timer.current)
-    timer.current = window.setTimeout(() => {
-      const t0 = performance.now()
-      const r = buildMosaic(maps, DEFAULT_SET, palette, options)
-      setBuildMs(performance.now() - t0)
-      setResult(r)
-      setBusy(false)
-    }, 60)
-    return () => window.clearTimeout(timer.current)
-  }, [maps, palette, options])
+    const token = ++run.current
+    let cancelled = false
 
-  const load = useCallback((px: SourcePixels) => {
+    ;(async () => {
+      let m = prepCache.current?.key === prepKey && prepCache.current.src === source
+        ? prepCache.current.maps
+        : null
+
+      if (!m) {
+        if (prepEnabled) {
+          setStatus('preparing')
+          await yieldToPaint()
+          if (cancelled || token !== run.current) return
+          const out = prepPhoto(source.data, source.width, source.height, prep)
+          m = toDensityMaps(out.data, source.width, source.height)
+        } else {
+          m = toDensityMaps(source.data, source.width, source.height)
+        }
+        prepCache.current = { key: prepKey, src: source, maps: m }
+      }
+
+      setStatus('building')
+      await yieldToPaint()
+      if (cancelled || token !== run.current) return
+
+      const t0 = performance.now()
+      const r = build(m, pack, palette, options)
+      if (cancelled || token !== run.current) return
+      setBuildMs(performance.now() - t0)
+      setMaps(m)
+      setResult(r)
+      setStatus('idle')
+    })()
+
+    return () => { cancelled = true }
+  }, [source, prepKey, prepEnabled, prep, pack, palette, options])
+
+  const load = useCallback(async (px: SourcePixels) => {
+    setStatus('reading')
+    await yieldToPaint()
     setSource(px)
     const photo = looksLikePhoto(px)
     setSuggestPrep(photo)
     setPrepEnabled(photo)
-    // A fresh image invalidates any focal box, which was drawn in the previous
-    // image's pixel coordinates.
+    // A fresh image invalidates any focal box, drawn in the old image's pixels.
     setOptions((o) => ({ ...o, figureBox: null }))
   }, [])
 
@@ -103,20 +128,24 @@ export function useMosaic() {
   const update = useCallback((patch: Partial<MosaicOptions>) => {
     setOptions((o) => ({ ...o, ...patch }))
     // Any manual change means the result is no longer that preset.
-    setPresetId('custom')
+    if (!('figureBox' in patch)) setPresetId('custom')
   }, [])
 
   const reset = useCallback(() => {
     setSource(null)
     setResult(null)
+    setMaps(null)
+    prepCache.current = null
     setSuggestPrep(false)
     setPrepEnabled(false)
+    setStatus('idle')
   }, [])
 
   return {
-    source, result, options, palette, paletteId, presetId, maps,
-    prep, prepEnabled, suggestPrep, busy, buildMs,
+    source, result, maps, options, pack, packId, palette, paletteId, presetId,
+    prep, prepEnabled, suggestPrep, status, buildMs,
+    busy: status !== 'idle',
     load, update, applyPreset, reset,
-    setPaletteId, setPrep, setPrepEnabled,
+    setPackId, setPaletteId, setPrep, setPrepEnabled,
   }
 }

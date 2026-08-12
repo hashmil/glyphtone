@@ -11,7 +11,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { buildMosaic, toDensityMaps, DEFAULT_OPTIONS } from './mosaic'
-import { DEFAULT_SET } from './glyphs'
+import { PACKS } from './packs'
 import { PALETTES } from './palettes'
 import { toSVG } from './render-svg'
 import { makeZip } from '../lib/zip'
@@ -29,18 +29,19 @@ function result() {
     rgba[i * 4 + 2] = raw[i * 3 + 2]
     rgba[i * 4 + 3] = 255
   }
-  return buildMosaic(toDensityMaps(rgba, width, height), DEFAULT_SET, PALETTES[0], {
+  return buildMosaic(toDensityMaps(rgba, width, height), MOTIFS, PALETTES[0], {
     ...DEFAULT_OPTIONS, cols: 160, width: 3200,
   })
 }
 
+const MOTIFS = PACKS.find((p) => p.id === 'motifs')!
 const countUses = (svg: string) => (svg.match(/<use /g) ?? []).length
 
 describe('SVG export', () => {
   const r = result()
 
   it('writes every placement when uncropped', () => {
-    expect(countUses(toSVG(r, DEFAULT_SET))).toBe(r.filled)
+    expect(countUses(toSVG(r, MOTIFS))).toBe(r.filled)
   })
 
   it('gives each tile only its own icons', () => {
@@ -49,7 +50,7 @@ describe('SVG export', () => {
     const quads = [
       [0, 0], [hw, 0], [0, hh], [hw, hh],
     ].map(([x, y]) =>
-      countUses(toSVG(r, DEFAULT_SET, { crop: [x, y, hw, hh] as [number, number, number, number] })))
+      countUses(toSVG(r, MOTIFS, { crop: [x, y, hw, hh] as [number, number, number, number] })))
 
     for (const n of quads) {
       expect(n).toBeGreaterThan(0)
@@ -63,14 +64,14 @@ describe('SVG export', () => {
   })
 
   it('only declares the glyphs a tile actually uses', () => {
-    const tile = toSVG(r, DEFAULT_SET, { crop: [0, 0, r.width / 4, r.height / 4] })
+    const tile = toSVG(r, MOTIFS, { crop: [0, 0, r.width / 4, r.height / 4] })
     const defs = (tile.match(/<g id="/g) ?? []).length
     expect(defs).toBeGreaterThan(0)
     expect(defs).toBeLessThanOrEqual(r.used.size)
   })
 
   it('uses the Illustrator-safe reference form', () => {
-    const svg = toSVG(r, DEFAULT_SET)
+    const svg = toSVG(r, MOTIFS)
     // <symbol> plus a sized <use> is valid SVG2 and renders blank in
     // Illustrator, which is the target for a print export.
     expect(svg).toContain('xmlns:xlink')

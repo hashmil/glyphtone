@@ -21,12 +21,21 @@
  * A faithful port of the Python prototype's grid_mosaic.build.
  */
 import type { GlyphSet, MosaicOptions, MosaicResult, Placement } from './types'
+import type { GlyphPack } from './packs'
 import type { Palette, ZoneId } from './palettes'
-import { ZONE_IDS, SMALL_MARKS } from './palettes'
-import { coverageTable, expand } from './glyphs'
+import { ZONE_IDS } from './palettes'
+import { expand } from './glyphs'
 import { mulberry32, randInt } from './rng'
 
 export const DEFAULT_OPTIONS: MosaicOptions = {
+  method: 'grid',
+  // 2.0, not the prototype's 1.0. Measured against a 260-column grid on the
+  // same source: density 1 places 61k marks and reads *lighter* than the grid
+  // (mean 244 vs 233), density 2 places 242k and finally beats it (226, and
+  // 3.2% of the frame near-black against 1.8%). Shipping the old default would
+  // make switching to organic look like it had done nothing.
+  density: 2.0,
+  weightBias: 0.55,
   cols: 420,
   width: 6000,
   gutter: 1.0,
@@ -112,7 +121,7 @@ type Ladder = Array<{ cov: number; name: string | null }>
 function buildLadder(
   set: GlyphSet, motifs: string[], covs: Record<string, number>, knockout: boolean,
 ): Ladder {
-  let names = [...expand(set, motifs), ...SMALL_MARKS.filter((m) => set.glyphs[m])]
+  let names = [...expand(set, motifs), ...set.small.filter((m) => set.glyphs[m])]
   // Knockout tiles are the only way a non-overlapping grid reaches near-black,
   // but they read as stickers rather than as marks, so they stay off by default.
   if (!knockout) names = names.filter((n) => !n.endsWith('_rev'))
@@ -121,8 +130,9 @@ function buildLadder(
 }
 
 export function buildMosaic(
-  maps: DensityMaps, set: GlyphSet, palette: Palette, opts: MosaicOptions,
+  maps: DensityMaps, pack: GlyphPack, palette: Palette, opts: MosaicOptions,
 ): MosaicResult {
+  const set = pack.set
   const { width: sw, height: sh } = maps
   const outW = opts.width
   const outH = Math.round((outW * sh) / sw)
@@ -150,9 +160,9 @@ export function buildMosaic(
   const srcG = boxDownsample(maps.rgb, sw, sh, rows, cols, 3, 1)
   const srcB = boxDownsample(maps.rgb, sw, sh, rows, cols, 3, 2)
 
-  const covs = coverageTable(set)
+  const covs = pack.coverages
   const ladders: Ladder[] = ZONE_IDS.map((z) =>
-    buildLadder(set, palette.zones[z].motifs, covs, opts.knockout))
+    buildLadder(set, pack.zones[z], covs, opts.knockout))
   // Per zone, not global. Zones have different heaviest glyphs, and scaling
   // every zone by the darkest one available anywhere makes the lighter-topped
   // zones saturate and lose all internal tone.
@@ -231,8 +241,7 @@ export function buildMosaic(
       const name = chosen[idx]
       if (!name) continue
       used.add(name)
-      const zone = palette.zones[ZONE_IDS[zoneC[idx]] as ZoneId]
-      const [pale, deep] = zone.ramp
+      const [pale, deep] = palette.ramps[ZONE_IDS[zoneC[idx]] as ZoneId]
 
       // Per-cell value jitter. Reference mosaics vary a lot from one cell to
       // the next, and that scatter is what makes them sparkle; a smooth ramp
@@ -247,6 +256,7 @@ export function buildMosaic(
 
       placements.push({
         glyph: name,
+        char: pack.chars?.[name],
         x: i * cell + off,
         y: j * cell + off,
         scale,

@@ -77,7 +77,10 @@ export function makeSample(width = 1400, height = 700): SourcePixels {
         // photograph's range rather than to artwork on white: an evenly light
         // frame gives the prep step's darkness threshold nothing to hold on
         // to, and the result comes out nearly empty.
-        const cloud = tex * 54 * (0.25 + t)
+        // Texture stays strong near the horizon. Scaling it with height left
+        // the horizon band smooth, the flat-field then removed it entirely,
+        // and the demo came out with an empty white stripe through the middle.
+        const cloud = tex * 54 * (0.75 + 0.5 * t)
         r = 214 - t * 132 + glow * 30 - cloud
         g = 224 - t * 118 + glow * 22 - cloud
         b = 238 - t * 84 + glow * 6 - cloud * 0.7
@@ -88,7 +91,7 @@ export function makeSample(width = 1400, height = 700): SourcePixels {
         const band = 0.5 + 0.5 * Math.sin((y * 0.11) + Math.sin(x * 0.004) * 3)
         // Grain that coarsens with depth, so the ground has structure the
         // flat-field will keep rather than one smooth ramp it will erase.
-        const grain = tex * (30 + t * 62)
+        const grain = tex * (52 + t * 46)
         const shade = t * 0.80 + band * 0.12 * (0.3 + t)
         r = 236 - shade * 176 - grain
         g = 216 - shade * 178 - grain
