@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Controls } from '@/components/Controls'
 import { Dropzone } from '@/components/Dropzone'
+import { ExportDialog } from '@/components/ExportDialog'
 import { MosaicCanvas } from '@/components/MosaicCanvas'
 import { useMosaic } from '@/lib/useMosaic'
 
@@ -49,6 +50,12 @@ export default function App() {
               <RotateCcw className="size-3.5" />
               <span className="hidden sm:inline">New image</span>
             </Button>
+          )}
+          {m.source && (
+            <ExportDialog
+              ctx={m.maps ? { maps: m.maps, palette: m.palette, options: m.options } : null}
+              disabled={!m.result}
+            />
           )}
           {m.source && (
             <Sheet>

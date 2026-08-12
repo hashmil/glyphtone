@@ -11,11 +11,22 @@ export function drawMosaic(
   ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   result: MosaicResult,
   set: GlyphSet,
-  opts: { background?: string; scale?: number } = {},
+  opts: {
+    background?: string
+    scale?: number
+    /** crop origin in output px, for tiled export. Applied inside the per-cell
+     *  transform: setTransform is absolute, so translating the context before
+     *  calling this would be silently overwritten by the first placement. */
+    origin?: { x: number; y: number }
+    /** how much to paint, in output px. Defaults to the whole piece. */
+    size?: { width: number; height: number }
+  } = {},
 ): void {
   const scale = opts.scale ?? 1
-  const w = result.width * scale
-  const h = result.height * scale
+  const ox = (opts.origin?.x ?? 0) * scale
+  const oy = (opts.origin?.y ?? 0) * scale
+  const w = (opts.size?.width ?? result.width) * scale
+  const h = (opts.size?.height ?? result.height) * scale
 
   ctx.save()
   ctx.fillStyle = opts.background ?? '#ffffff'
@@ -28,7 +39,13 @@ export function drawMosaic(
   // every cell its own value, so there is nothing to group. Sorting by glyph
   // instead keeps the transform cheap and the path lookup hot.
   let lastFill = ''
+  const cell = result.cell * scale
   for (const p of result.placements) {
+    const x = p.x * scale - ox
+    const y = p.y * scale - oy
+    // Skip anything outside the crop. On a tiled export most placements miss,
+    // so this is what keeps per-tile cost proportional to the tile.
+    if (x + cell < 0 || y + cell < 0 || x > w || y > h) continue
     const path = paths.get(p.glyph)
     if (!path) continue
     const fill = `rgb(${p.r},${p.g},${p.b})`
@@ -37,7 +54,7 @@ export function drawMosaic(
       lastFill = fill
     }
     const s = p.scale * scale
-    ctx.setTransform(s, 0, 0, s, p.x * scale, p.y * scale)
+    ctx.setTransform(s, 0, 0, s, x, y)
     ctx.fill(path)
   }
 

@@ -15,9 +15,18 @@ export function toSVG(
 ): string {
   const bg = opts.background ?? '#ffffff'
   const [vx, vy, vw, vh] = opts.crop ?? [0, 0, result.width, result.height]
+  const cropped = !!opts.crop
 
   const parts: string[] = []
+  // A tile has to contain only its own icons, or every tile is as heavy as the
+  // whole piece and tiling buys nothing. The cell-sized bleed keeps glyphs that
+  // straddle the edge, so joins do not lose marks.
+  const bleed = result.cell
+  const used = new Set<string>()
   for (const p of result.placements) {
+    if (cropped && (p.x + bleed < vx || p.y + bleed < vy ||
+                    p.x > vx + vw || p.y > vy + vh)) continue
+    used.add(p.glyph)
     parts.push(
       `<use xlink:href="#${p.glyph}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)}) ` +
       `scale(${p.scale.toFixed(4)})" fill="#${hex(p.r)}${hex(p.g)}${hex(p.b)}"/>`,
@@ -30,7 +39,7 @@ export function toSVG(
     'xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" ' +
     `width="${vw}" height="${vh}" viewBox="${vx} ${vy} ${vw} ${vh}">` +
     `<rect x="${vx}" y="${vy}" width="${vw}" height="${vh}" fill="${bg}"/>` +
-    `<defs>${svgDefs(set, result.used)}</defs>${parts.join('')}</svg>`
+    `<defs>${svgDefs(set, cropped ? used : result.used)}</defs>${parts.join('')}</svg>`
   )
 }
 

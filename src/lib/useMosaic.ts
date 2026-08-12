@@ -114,7 +114,7 @@ export function useMosaic() {
   }, [])
 
   return {
-    source, result, options, palette, paletteId, presetId,
+    source, result, options, palette, paletteId, presetId, maps,
     prep, prepEnabled, suggestPrep, busy, buildMs,
     load, update, applyPreset, reset,
     setPaletteId, setPrep, setPrepEnabled,
