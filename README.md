@@ -1,10 +1,22 @@
 # Glyphtone
 
+**https://glyphtone.pages.dev**
+
 Turns an image into a mosaic built from thousands of tiny icons, and exports it
 as vector for large-format print.
 
 Everything runs in the browser. No image is ever uploaded, there is no backend,
 and the whole thing deploys as static files.
+
+## Deploying
+
+    npm run deploy
+
+Cloudflare Pages, direct upload, no CI. Static assets on the free plan are not
+metered for requests or bandwidth; the only quota that could bite is Pages
+Functions, and there are none, which is the entire reason the engine runs
+client-side. Limits that do apply: 500 builds a month, 20,000 files, 25 MiB per
+file. This ships 10 files, the largest well under a megabyte.
 
 ## How it works
 
