@@ -42,6 +42,10 @@ venv/
 src/engine/__fixtures__/*.png
 src/engine/__fixtures__/*.svg
 
+# Screenshot comparisons from design passes. Kept on disk so the rejected
+# options stay reviewable, out of git because they are 17 MB of PNG.
+review/
+
 # Editors
 .vscode/*
 !.vscode/extensions.json
