@@ -211,12 +211,22 @@ engine runs client-side. The limits that do apply are 500 builds a month,
 
 ### Regenerating the data
 
-Not needed to run or build the app; the generated JSON is committed. Requires
-Python with Pillow, and a macOS font path for the last two.
+Not needed to run or build the app; the generated JSON is committed.
+
+The font-backed packs are rasterised by a Node script driving headless Chrome,
+from the Fontsource packages pinned in package.json. Chrome rather than a
+rasterising library because it is the same shaper the browser uses, and because
+it can be asked what a glyph's ink box actually is. The script refuses any
+codepoint outside the font subset's declared unicode-range, which is how it
+caught box drawing being absent from Noto Sans Symbols 2 and quietly satisfied
+by a macOS fallback.
+
+    npm run packs
+
+The remaining Python tools need Python with Pillow and a prototype checkout:
 
     uv run tools/export-glyphs.py --src <prototype> --out src/engine/glyphs.json
     uv run tools/make-fixture.py  --src <prototype>
-    uv run tools/make-ascii-pack.py --out src/engine/ascii.json
     uv run tools/make-emoji-pack.py --out src/engine/emoji.json
 
 ---
@@ -225,10 +235,18 @@ Python with Pillow, and a macOS font path for the last two.
 
 MIT. See [LICENSE](LICENSE).
 
-The bundled glyph packs are original work: the motif set is hand-drawn, and the
-geometric, stipple, hatching and blocks packs are generated in code. The ASCII
-pack is rasterised from a system monospace font and the emoji pack references
-system emoji, so both depend on fonts installed on the machine that generated
-them rather than shipping any font data.
+The bundled glyph packs are original work or generated: the motif set is
+hand-drawn, and the geometric, stipple, hatching, blocks, halftone, box-drawing
+and braille packs are generated in code.
+
+The ASCII and dingbat packs are rasterised at build time from Google Fonts
+releases under the SIL Open Font License, IBM Plex Mono and Noto Sans Symbols 2,
+self-hosted through Fontsource. Only the rasterised outlines are committed; no
+font file ships in the app and none is loaded at runtime, so an exported SVG
+needs no font on the machine that opens it.
+
+The emoji pack references system emoji rather than shipping any, so what it
+renders depends on the machine viewing it. That is why the UI steers emoji
+exports towards PNG.
 
 Images you put in stay on your device and are never uploaded.

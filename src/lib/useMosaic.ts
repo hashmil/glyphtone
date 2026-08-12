@@ -123,6 +123,11 @@ export function useMosaic() {
     if (!preset) return
     setPresetId(id)
     setOptions((o) => ({ ...o, ...preset.options }))
+    // A preset that names a pack or a palette seeds those too. Without this a
+    // landing-page card called "ASCII, fine" would set the density and leave
+    // the glyphs on whatever was already selected.
+    if (preset.packId) setPackId(preset.packId)
+    if (preset.paletteId) setPaletteId(preset.paletteId)
   }, [])
 
   const update = useCallback((patch: Partial<MosaicOptions>) => {

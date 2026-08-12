@@ -14,11 +14,26 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Field } from '@/components/Field'
-import { planExport, runExport, type ExportContext, type ExportFormat } from '@/lib/export'
+import {
+  backgroundWarnings, planExport, runExport,
+  type ExportContext, type ExportFormat,
+} from '@/lib/export'
+import { DEFAULT_BACKGROUND, type Background } from '@/engine/background'
 
 interface Props {
   ctx: ExportContext | null
+  /** Whatever the preview is showing. The export has no background control of
+   *  its own: two places to set it is two places for them to disagree, and the
+   *  preview is where the decision is actually being looked at. */
+  background?: Background
   disabled?: boolean
+}
+
+const BG_LABEL: Record<Background['kind'], string> = {
+  transparent: 'Transparent',
+  solid: 'Solid colour',
+  gradient: 'Gradient',
+  image: 'Image',
 }
 
 /** Print sizes rather than pixel counts, because that is the decision being
@@ -33,7 +48,7 @@ const SIZES = [
   { id: 'custom', label: 'Custom', px: 0, note: '' },
 ]
 
-export function ExportDialog({ ctx, disabled }: Props) {
+export function ExportDialog({ ctx, background = DEFAULT_BACKGROUND, disabled }: Props) {
   const [open, setOpen] = useState(false)
   const [format, setFormat] = useState<ExportFormat>('svg')
   const [sizeId, setSizeId] = useState('screen')
@@ -48,9 +63,14 @@ export function ExportDialog({ ctx, disabled }: Props) {
   const req = useMemo(
     () => ({
       format, width, tile: tiling ? tile : 0,
-      background: '#ffffff', basename: 'glyphtone',
+      background, basename: 'glyphtone',
     }),
-    [format, width, tiling, tile],
+    [format, width, tiling, tile, background],
+  )
+
+  const bgWarnings = useMemo(
+    () => backgroundWarnings(format, background),
+    [format, background],
   )
 
   const plan = useMemo(
@@ -176,11 +196,12 @@ export function ExportDialog({ ctx, disabled }: Props) {
               <p className="font-mono text-[11px] tabular-nums">
                 {plan.outWidth.toLocaleString()} x {plan.outHeight.toLocaleString()} px
                 {plan.tiles > 1 && ` · ${plan.cols}x${plan.rows} tiles`}
+                {` · ${BG_LABEL[background.kind].toLowerCase()} background`}
               </p>
               {plan.blocked && (
                 <p className="text-destructive text-[11px] leading-snug">{plan.blocked}</p>
               )}
-              {plan.warnings.map((w) => (
+              {[...plan.warnings, ...bgWarnings].map((w) => (
                 <p key={w} className="text-[11px] leading-snug text-amber-700">{w}</p>
               ))}
             </div>

@@ -127,4 +127,23 @@
   html {
     @apply font-sans;
     }
+  /* The shell owns the scroll model: exactly one scroll region on desktop,
+     which is the control rail. Letting the document scroll as well is what
+     produced the two-scrollbar shell this replaced. */
+  html, body, #root {
+    height: 100%;
+    overscroll-behavior: none;
+    }
+}
+
+/* Checkerboard for a transparent background, so "none" is visibly a choice. */
+.gt-checker {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #e6e6e6 25%, transparent 25%),
+    linear-gradient(-45deg, #e6e6e6 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e6e6e6 75%),
+    linear-gradient(-45deg, transparent 75%, #e6e6e6 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }

@@ -1,18 +1,26 @@
 import { useState } from 'react'
-import { RotateCcw, SlidersHorizontal } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 import { toast, Toaster } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { Controls, type ControlsProps } from '@/components/Controls'
-import { Dropzone } from '@/components/Dropzone'
+import { type ControlsProps } from '@/components/Controls'
+import { ControlRail } from '@/components/ControlRail'
 import { ExportDialog } from '@/components/ExportDialog'
+import { Landing } from '@/components/Landing'
+import { MobileControls } from '@/components/MobileControls'
 import { MosaicCanvas } from '@/components/MosaicCanvas'
+import { DEFAULT_BACKGROUND, type Background } from '@/engine/background'
 import { useMosaic } from '@/lib/useMosaic'
+
 
 export default function App() {
   const m = useMosaic()
   const [drawingFocus, setDrawingFocus] = useState(false)
+  // Deliberately outlives "New image", like the pack, the palette and the
+  // preset: those are the look you have settled on, and a new source image is
+  // usually the same job. Only the focal box is cleared, because it is stored
+  // in the old image's pixels.
+  const [background, setBackground] = useState<Background>(DEFAULT_BACKGROUND)
 
   const controlProps: ControlsProps = {
     options: m.options,
@@ -31,13 +39,35 @@ export default function App() {
     drawingFocus,
     onDrawingFocus: setDrawingFocus,
     hasFocus: m.options.figureBox !== null,
+    background,
+    onBackground: setBackground,
   }
 
+  const canvas = (
+    <MosaicCanvas
+      className="h-full min-h-0"
+      sizing="fit"
+      background={background}
+      result={m.result}
+      pack={m.pack}
+      source={m.source}
+      status={m.status}
+      figureBox={m.options.figureBox}
+      onFigureBox={(figureBox) => {
+        m.update({ figureBox })
+        setDrawingFocus(false)
+      }}
+      drawing={drawingFocus}
+    />
+  )
+
   return (
-    <div className="bg-background text-foreground min-h-dvh">
+    // The shell is exactly the viewport and never scrolls. Every scroll region
+    // below is explicit and bounded.
+    <div className="bg-background text-foreground flex h-dvh min-h-0 flex-col overflow-hidden">
       <Toaster position="top-center" />
 
-      <header className="flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
         <div className="flex items-baseline gap-3">
           <h1 className="text-[15px] font-semibold tracking-tight">Glyphtone</h1>
           <p className="text-muted-foreground hidden text-[12px] md:block">
@@ -46,8 +76,10 @@ export default function App() {
         </div>
         <div className="flex items-center gap-1.5">
           {m.source && (
-            <Button variant="ghost" size="sm" onClick={m.reset}>
+            <Button variant="ghost" size="sm" onClick={m.reset} aria-label="New image">
               <RotateCcw className="size-3.5" />
+              {/* Below sm the label is hidden, so the button needs the name on
+                  the element or it is an unlabelled icon to a screen reader. */}
               <span className="hidden sm:inline">New image</span>
             </Button>
           )}
@@ -56,63 +88,43 @@ export default function App() {
               ctx={m.maps
                 ? { maps: m.maps, pack: m.pack, palette: m.palette, options: m.options }
                 : null}
+              background={background}
               disabled={!m.result || m.busy}
             />
-          )}
-          {m.source && (
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="lg:hidden">
-                  <SlidersHorizontal className="size-3.5" />
-                  Adjust
-                </Button>
-              </SheetTrigger>
-              {/* Fixed height rather than max-height: the tabs keep each panel
-                  short, and a sheet that resizes as you switch tabs is worse
-                  than one that stays put. */}
-              <SheetContent
-                side="bottom"
-                className="h-[68dvh] gap-0 overflow-hidden rounded-t-xl p-0"
-              >
-                <SheetHeader className="border-b px-4 py-3">
-                  <SheetTitle className="text-left text-[15px]">Adjust</SheetTitle>
-                </SheetHeader>
-                <div className="h-full overflow-y-auto overscroll-contain px-4 pt-3 pb-24">
-                  <Controls {...controlProps} layout="sheet" />
-                </div>
-              </SheetContent>
-            </Sheet>
           )}
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1500px] px-4 py-5 sm:px-5 sm:py-6">
-        {!m.source ? (
-          <div className="mx-auto max-w-2xl pt-8">
-            <Dropzone onLoad={m.load} onError={(msg) => toast.error(msg)} />
+      {!m.source ? (
+        // The landing page is a page rather than a workspace, so it gets a
+        // scroll region of its own. The document still never scrolls: the shell
+        // is the viewport and this scrolls inside it.
+        <main className="min-h-0 flex-1 overflow-y-auto">
+          <Landing
+            onLoad={m.load}
+            onPreset={m.applyPreset}
+            onError={(msg) => toast.error(msg)}
+          />
+        </main>
+      ) : (
+        // Desktop: a docked rail rather than a panel floating over the canvas.
+        // Both were built and shot at 1440 and 390 (review/s1-option{A,B}-*);
+        // the floating panel had to reserve the same 360 px of canvas anyway to
+        // avoid covering the piece, so it was a docked rail wearing a shadow.
+        //
+        // Mobile takes the other option's answer: a segmented bar, one tap to
+        // the section you want, instead of a single Adjust button that always
+        // opens on Style.
+        <main className="flex min-h-0 flex-1 flex-col lg:flex-row">
+          <div className="flex min-h-0 flex-1 flex-col p-3 sm:p-5 lg:min-w-0">
+            {canvas}
           </div>
-        ) : (
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_310px]">
-            <MosaicCanvas
-              result={m.result}
-              pack={m.pack}
-              source={m.source}
-              status={m.status}
-              figureBox={m.options.figureBox}
-              onFigureBox={(figureBox) => {
-                m.update({ figureBox })
-                setDrawingFocus(false)
-              }}
-              drawing={drawingFocus}
-            />
-            <aside className="hidden lg:block">
-              <div className="sticky top-6 max-h-[calc(100dvh-3rem)] overflow-y-auto pr-1">
-                <Controls {...controlProps} />
-              </div>
-            </aside>
+          <ControlRail className="hidden border-l lg:flex" {...controlProps} />
+          <div className="lg:hidden">
+            <MobileControls {...controlProps} />
           </div>
-        )}
-      </main>
+        </main>
+      )}
     </div>
   )
 }

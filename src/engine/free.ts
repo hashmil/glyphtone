@@ -93,8 +93,11 @@ export function buildFree(
         if (!ladder.length) continue
 
         // Darker source gives smaller, tighter marks; lighter gives larger,
-        // sparser ones.
-        const size = glyphSize * unit * (1.18 - 0.3 * k) * (0.88 + 0.26 * random())
+        // sparser ones. glyphScale then sets the overall size independently of
+        // how many marks there are, and sizeJitter the spread around it.
+        const jit = opts.sizeJitter
+        const size = glyphSize * unit * opts.glyphScale *
+          (1.18 - 0.3 * k) * (1 - jit + 2 * jit * random())
         if (size > maxSize) maxSize = size
 
         // Heavier glyphs where it is dark, on top of the density already

@@ -1,6 +1,7 @@
 import type { MosaicResult } from './types'
 import type { GlyphPack } from './packs'
 import { glyphPath } from './glyphs'
+import { fitBox, gradientLine, type Background } from './background'
 
 /** Live preview renderer.
  *
@@ -17,7 +18,7 @@ export function drawMosaic(
   result: MosaicResult,
   pack: GlyphPack,
   opts: {
-    background?: string
+    background?: Background
     scale?: number
     /** crop origin in output px, for tiled export. Applied inside the per-cell
      *  transform: setTransform is absolute, so translating the context before
@@ -34,8 +35,16 @@ export function drawMosaic(
   const h = (opts.size?.height ?? result.height) * scale
 
   ctx.save()
-  ctx.fillStyle = opts.background ?? '#ffffff'
-  ctx.fillRect(0, 0, w, h)
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  // Always clear first. A tiled or zoomed redraw reuses the same context, and
+  // a transparent background that skipped this would show the previous frame.
+  ctx.clearRect(0, 0, w, h)
+  paintBackground(ctx, opts.background, {
+    // Piece coordinates, so a crop shows its slice of one whole-piece gradient
+    // rather than a gradient of its own.
+    pieceW: result.width * scale, pieceH: result.height * scale,
+    ox, oy, w, h,
+  })
 
   const text = pack.mode === 'text'
   const paths = new Map<string, Path2D>()
@@ -85,4 +94,38 @@ export function drawMosaic(
 
   ctx.restore()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
+}
+
+/** Paints the background into a `w x h` viewport whose top-left sits at
+ *  (ox, oy) within a `pieceW x pieceH` piece. */
+function paintBackground(
+  ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  bg: Background | undefined,
+  box: { pieceW: number; pieceH: number; ox: number; oy: number; w: number; h: number },
+): void {
+  if (!bg || bg.kind === 'transparent') return
+  const { pieceW, pieceH, ox, oy, w, h } = box
+
+  if (bg.kind === 'solid') {
+    ctx.fillStyle = bg.color
+    ctx.fillRect(0, 0, w, h)
+    return
+  }
+
+  if (bg.kind === 'gradient') {
+    const l = gradientLine(pieceW, pieceH, bg.angle)
+    const g = ctx.createLinearGradient(l.x1 - ox, l.y1 - oy, l.x2 - ox, l.y2 - oy)
+    g.addColorStop(0, bg.from)
+    g.addColorStop(1, bg.to)
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, w, h)
+    return
+  }
+
+  const img = bg.image
+  if (!img) return
+  const iw = 'width' in img ? Number(img.width) : 0
+  const ih = 'height' in img ? Number(img.height) : 0
+  const f = fitBox(iw, ih, pieceW, pieceH, bg.fit ?? 'cover')
+  ctx.drawImage(img, f.x - ox, f.y - oy, f.width, f.height)
 }

@@ -29,14 +29,21 @@ import { mulberry32, randInt } from './rng'
 
 export const DEFAULT_OPTIONS: MosaicOptions = {
   method: 'grid',
-  // 2.0, not the prototype's 1.0. Measured against a 260-column grid on the
-  // same source: density 1 places 61k marks and reads *lighter* than the grid
-  // (mean 244 vs 233), density 2 places 242k and finally beats it (226, and
-  // 3.2% of the frame near-black against 1.8%). Shipping the old default would
-  // make switching to organic look like it had done nothing.
-  density: 2.0,
+  // Was 2.0, chosen when organic had to beat a 420-column grid and could only
+  // do it by placing a quarter of a million marks. With the ordered default now
+  // at 150 columns, matching that would bury the image; organic's job is to
+  // read as scattered, not as dense. 0.55 places roughly 19k marks against the
+  // ordered default's 5k, and each of them is larger, so it is visibly the
+  // sparser, looser of the two rather than a darker version of the same thing.
+  density: 0.55,
   weightBias: 0.55,
-  cols: 420,
+  glyphScale: 1.6,
+  sizeJitter: 0.13,
+  // Was 420. Nobody can see a 420-column grid as icons; at that size it is a
+  // halftone of something, and the whole point of the tool is that the marks
+  // are legible one by one. 150 across the long edge is the coarsest setting
+  // that still resolves a face, and the slider goes up from there.
+  cols: 150,
   width: 6000,
   gutter: 1.0,
   gamma: 0.85,

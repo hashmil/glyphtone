@@ -5,6 +5,7 @@ import { drawMosaic } from '@/engine/render-canvas'
 import { toSVG, MAX_ARTBOARD_PX } from '@/engine/render-svg'
 import type { Palette } from '@/engine/palettes'
 import type { MosaicOptions } from '@/engine/types'
+import { isTransparent, type Background } from '@/engine/background'
 import { canvasToBlob, download } from './image'
 import { gzip, makeZip, type ZipEntry } from './zip'
 
@@ -16,7 +17,7 @@ export interface ExportRequest {
   width: number
   /** split into tiles of at most this many pixels on a side; 0 means one file */
   tile: number
-  background: string
+  background: Background
   basename: string
 }
 
@@ -98,6 +99,12 @@ export async function runExport(
   const plan = planExport(req, ctx.maps.width / ctx.maps.height)
   if (plan.blocked) throw new Error(plan.blocked)
 
+  // The SVG path writes the data URL straight out, but the canvas path needs
+  // the image decoded. Doing it once here rather than per tile keeps a 40-tile
+  // export from decoding the same background 40 times.
+  const background = await resolveBackground(req.background)
+  req = { ...req, background }
+
   // One build at full size, then tiles are crops of it. Building per tile
   // would re-run the error diffusion per tile and seam the tone at the joins.
   const result = build(ctx.maps, ctx.pack, ctx.palette, {
@@ -164,7 +171,7 @@ export async function runExport(
 async function renderPNG(
   result: Parameters<typeof drawMosaic>[1],
   pack: GlyphPack,
-  background: string,
+  background: Background,
   crop?: [number, number, number, number],
 ): Promise<Blob> {
   const [cx, cy, cw, ch] = crop ?? [0, 0, result.width, result.height]
@@ -179,4 +186,31 @@ async function renderPNG(
     size: { width: cw, height: ch },
   })
   return canvasToBlob(canvas)
+}
+
+/** Decodes an image background once, so every tile can draw it. */
+export async function resolveBackground(bg: Background): Promise<Background> {
+  if (bg.kind !== 'image' || bg.image) return bg
+  const img = new Image()
+  img.src = bg.src
+  await img.decode()
+  return { ...bg, image: img }
+}
+
+/** Warnings the export UI shows about the chosen background rather than the
+ *  size, kept here so the dialog does not have to know the rules. */
+export function backgroundWarnings(
+  format: ExportFormat, bg: Background,
+): string[] {
+  const out: string[] = []
+  if (format !== 'png' && bg.kind === 'image') {
+    out.push(
+      'The background image is embedded in the SVG as a data URL, which makes ' +
+      'the file large. SVGZ or PNG will be considerably smaller.',
+    )
+  }
+  if (isTransparent(bg) && format === 'png') {
+    out.push('Transparent PNG. Anything that does not honour alpha will show black.')
+  }
+  return out
 }

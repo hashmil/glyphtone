@@ -10,6 +10,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Field } from '@/components/Field'
+import { BackgroundControl } from '@/components/BackgroundControl'
+import type { Background } from '@/engine/background'
 import { PACKS } from '@/engine/packs'
 import { PALETTES, ZONE_IDS } from '@/engine/palettes'
 import { PRESETS } from '@/engine/presets'
@@ -34,10 +36,25 @@ export interface ControlsProps {
   drawingFocus: boolean
   onDrawingFocus: (on: boolean) => void
   hasFocus: boolean
+  background: Background
+  onBackground: (bg: Background) => void
   /** `sheet` splits the same controls into tabs. Stacked, they are 1,145 px
    *  tall, which is a long scroll inside a phone-height sheet. */
   layout?: 'sidebar' | 'sheet'
+  /** Sheet layout only. Supplied when the tab is chosen outside the sheet, by
+   *  a segmented bar that also opens it, so the two cannot disagree. */
+  tab?: SheetTab
+  onTab?: (tab: SheetTab) => void
 }
+
+export type SheetTab = 'style' | 'tone' | 'image' | 'more'
+
+export const SHEET_TABS: Array<{ id: SheetTab; label: string }> = [
+  { id: 'style', label: 'Style' },
+  { id: 'tone', label: 'Tone' },
+  { id: 'image', label: 'Image' },
+  { id: 'more', label: 'More' },
+]
 
 function PackSelect(p: ControlsProps) {
   const pack = PACKS.find((x) => x.id === p.packId)
@@ -152,18 +169,34 @@ function ToneFields(p: ControlsProps) {
   return (
     <>
       {organic ? (
-        <Field
-          label="Density"
-          hint="How many marks get placed. Overlap is what lets this go dark, and the count rises steeply: 2.0 is around 240,000 marks, 3.0 is over half a million."
-          value={p.options.density} min={0.2} max={3} step={0.05}
-          format={(v) => v.toFixed(2)}
-          onChange={(density) => p.onChange({ density })}
-        />
+        <>
+          <Field
+            label="Density"
+            hint="How many marks get placed. The count rises with the square of this, so small steps do a lot: 0.55 is around 19,000 marks, 1.5 is around 140,000."
+            value={p.options.density} min={0.15} max={3} step={0.05}
+            format={(v) => v.toFixed(2)}
+            onChange={(density) => p.onChange({ density })}
+          />
+          <Field
+            label="Mark size"
+            hint="Independent of the count, so sparse and large is reachable. Overlap is what lets organic go genuinely dark."
+            value={p.options.glyphScale} min={0.4} max={4} step={0.05}
+            format={(v) => `${v.toFixed(2)}x`}
+            onChange={(glyphScale) => p.onChange({ glyphScale })}
+          />
+          <Field
+            label="Size spread"
+            hint="How much marks vary in size around that. Zero makes every mark in a pass identical, which reads as a stamp."
+            value={p.options.sizeJitter} min={0} max={0.6} step={0.01}
+            format={(v) => `±${Math.round(v * 100)}%`}
+            onChange={(sizeJitter) => p.onChange({ sizeJitter })}
+          />
+        </>
       ) : (
         <Field
-          label="Density"
-          hint="Cells across. The single strongest control over how the piece reads."
-          value={p.options.cols} min={60} max={700} step={10}
+          label="Columns"
+          hint="Cells across the long edge. The single strongest control over how the piece reads, and the one number that decides whether the glyphs are legible."
+          value={p.options.cols} min={40} max={700} step={5}
           onChange={(cols) => p.onChange({ cols })}
         />
       )}
@@ -353,12 +386,16 @@ function Collapsible({ label, children }: { label: string; children: React.React
 export function Controls(p: ControlsProps) {
   if (p.layout === 'sheet') {
     return (
-      <Tabs defaultValue="style" className="w-full">
+      <Tabs
+        value={p.tab}
+        defaultValue={p.tab ? undefined : 'style'}
+        onValueChange={(v) => p.onTab?.(v as SheetTab)}
+        className="w-full"
+      >
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="style">Style</TabsTrigger>
-          <TabsTrigger value="tone">Tone</TabsTrigger>
-          <TabsTrigger value="image">Image</TabsTrigger>
-          <TabsTrigger value="more">More</TabsTrigger>
+          {SHEET_TABS.map((t) => (
+            <TabsTrigger key={t.id} value={t.id}>{t.label}</TabsTrigger>
+          ))}
         </TabsList>
         <TabsContent value="style" className="space-y-5 pt-4">
           <PackSelect {...p} />
@@ -370,6 +407,8 @@ export function Controls(p: ControlsProps) {
           <ToneFields {...p} />
         </TabsContent>
         <TabsContent value="image" className="space-y-5 pt-4">
+          <BackgroundControl value={p.background} onChange={p.onBackground} />
+          <Separator />
           <FocusControl {...p} />
           <Separator />
           <PrepControls {...p} />
@@ -388,6 +427,8 @@ export function Controls(p: ControlsProps) {
       <MethodSelect {...p} />
       <PaletteSelect {...p} />
       <ToneFields {...p} />
+      <Separator />
+      <BackgroundControl value={p.background} onChange={p.onBackground} />
       <Separator />
       <FocusControl {...p} />
       <Separator />

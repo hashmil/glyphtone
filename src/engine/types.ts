@@ -30,6 +30,15 @@ export interface MosaicOptions {
   /** organic only: how strongly local darkness picks a heavier glyph versus
    *  picking at random */
   weightBias: number
+  /** organic only: overall mark size, as a multiplier on each pass's own size.
+   *
+   * Size and count used to be the same slider: fewer marks only ever meant
+   * smaller marks, so sparse-and-large, which is the most useful thing organic
+   * placement can do, was unreachable. */
+  glyphScale: number
+  /** organic only: mark-to-mark size spread, as a fraction either side of the
+   *  size the pass asked for. 0 makes every mark in a pass identical. */
+  sizeJitter: number
   /** cells across. The single strongest control over how the piece reads. */
   cols: number
   /** output width in px. Height follows the source aspect. */

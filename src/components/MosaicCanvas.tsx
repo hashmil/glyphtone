@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, Maximize2, Minus, Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { drawMosaic } from '@/engine/render-canvas'
+import { DEFAULT_BACKGROUND, hasAlpha, type Background } from '@/engine/background'
 import type { GlyphPack } from '@/engine/packs'
 import type { MosaicResult } from '@/engine/types'
 import type { SourcePixels } from '@/lib/image'
@@ -18,6 +19,12 @@ interface Props {
   drawing: boolean
   status: Status
   className?: string
+  /** What sits under the glyphs, drawn by the same renderer the export uses. */
+  background?: Background
+  /** `fit` sizes the piece to the box it is given, so the canvas never forces
+   *  the page to scroll. `flow` is the old behaviour: full width, height by
+   *  aspect, and whatever that costs vertically. */
+  sizing?: 'fit' | 'flow'
 }
 
 const MAX_ZOOM = 12
@@ -31,9 +38,15 @@ const MAX_ZOOM = 12
  */
 export function MosaicCanvas({
   result, pack, source, figureBox, onFigureBox, drawing, status, className,
+  background = DEFAULT_BACKGROUND, sizing = 'flow',
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const stageRef = useRef<HTMLDivElement>(null)
+  // Redraw when the box changes rather than only when the mosaic does. In fit
+  // mode the canvas is sized by its container, so a window resize alone
+  // changes the resolution it should be drawn at.
+  const [box, setBox] = useState({ w: 0, h: 0 })
   const [drag, setDrag] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null)
   const [drawMs, setDrawMs] = useState(0)
 
@@ -45,6 +58,21 @@ export function MosaicCanvas({
 
   const zoomed = zoom > 1.001
 
+  /** The piece's size on screen, in CSS px, derived only from the stage box and
+   *  the piece's aspect. Nothing downstream measures the canvas, so there is no
+   *  loop to settle. */
+  const fitted = useMemo(() => {
+    if (!result || box.w < 1) return { w: 0, h: 0 }
+    const aspect = result.width / result.height
+    // The stats line lives inside the measured stage, so its height comes out
+    // of what the piece may use or the two together overflow.
+    const STATS = 26
+    const w = sizing === 'fit' && box.h > 1
+      ? Math.min(box.w, Math.max(1, box.h - STATS) * aspect)
+      : box.w
+    return { w, h: w / aspect }
+  }, [result, box, sizing])
+
   const clampCentre = useCallback((c: { x: number; y: number }, z: number) => {
     const half = 0.5 / z
     return {
@@ -53,16 +81,36 @@ export function MosaicCanvas({
     }
   }, [])
 
+  // The stage is measured, not the canvas wrapper. Observing the wrapper is
+  // circular: the wrapper is sized by the canvas, the canvas is sized from the
+  // wrapper, and which one wins depends on the order the two settle in. That
+  // showed up as the whole piece collapsing to a couple of hundred pixels after
+  // an unrelated re-render. The stage's size comes from the shell alone, so it
+  // is a fixed point.
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const ro = new ResizeObserver(([e]) => {
+      const r = e.contentRect
+      setBox((b) => (Math.abs(b.w - r.width) < 1 && Math.abs(b.h - r.height) < 1
+        ? b
+        : { w: r.width, h: r.height }))
+    })
+    ro.observe(stage)
+    return () => ro.disconnect()
+  }, [])
+
   useEffect(() => {
     const canvas = canvasRef.current
     const wrap = wrapRef.current
     if (!canvas || !wrap || !result) return
 
     const dpr = Math.min(2, window.devicePixelRatio || 1)
-    const cssW = wrap.clientWidth || 800
-    const aspect = result.height / result.width
-    const cssH = cssW * aspect
+    const { w: cssW, h: cssH } = fitted
+    if (cssW < 1 || cssH < 1) return
 
+    canvas.style.width = `${cssW}px`
+    canvas.style.height = `${cssH}px`
     canvas.width = Math.round(cssW * dpr)
     canvas.height = Math.round(cssH * dpr)
     const ctx = canvas.getContext('2d')
@@ -80,11 +128,12 @@ export function MosaicCanvas({
     const t0 = performance.now()
     drawMosaic(ctx, result, pack, {
       scale,
+      background,
       origin: { x: originX, y: originY },
       size: { width: viewW, height: viewH },
     })
     setDrawMs(performance.now() - t0)
-  }, [result, pack, zoom, centre])
+  }, [result, pack, zoom, centre, background, fitted])
 
   /** Pointer position as a fraction of the displayed element. */
   const rel = (e: React.PointerEvent) => {
@@ -104,7 +153,14 @@ export function MosaicCanvas({
   })
 
   const onDown = (e: React.PointerEvent) => {
-    e.currentTarget.setPointerCapture(e.pointerId)
+    // The zoom control sits inside this element. Capturing the pointer here
+    // retargets the rest of the sequence to the wrapper, so the click never
+    // reaches the button and the zoom buttons silently do nothing. Let anything
+    // that is itself a control handle its own press.
+    if ((e.target as HTMLElement).closest('button')) return
+    // Capture only when there is actually a gesture to follow. Capturing on
+    // every press is what caused the above.
+    if (drawing || zoomed) e.currentTarget.setPointerCapture(e.pointerId)
     if (drawing && source) {
       const p = toPiece(rel(e))
       setDrag({ x0: p.x, y0: p.y, x1: p.x, y1: p.y })
@@ -238,12 +294,34 @@ export function MosaicCanvas({
 
   const busy = status !== 'idle'
 
+  const fit = sizing === 'fit'
+
   return (
-    <div className={cn('relative', className)}>
+    <div
+      className={cn(
+        'relative',
+        fit && 'flex h-full min-h-0 flex-col gap-2',
+        className,
+      )}
+    >
+      {/* The stage is what gets measured. It has a size of its own, from the
+          shell, and never takes one from its contents. */}
+      <div
+        ref={stageRef}
+        className={cn(
+          'flex w-full flex-col items-center justify-center',
+          fit && 'min-h-0 flex-1',
+        )}
+      >
       <div
         ref={wrapRef}
+        style={{ width: fitted.w || undefined, height: fitted.h || undefined }}
         className={cn(
-          'relative touch-none overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/10',
+          'relative touch-none overflow-hidden rounded-lg shadow-sm ring-1 ring-black/10',
+          // A checkerboard wherever the export will be transparent, so "no
+          // background" is visibly a choice rather than a white one, and so a
+          // contain-fitted image's bars read as bars rather than as paper.
+          hasAlpha(background) ? 'gt-checker' : 'bg-white',
           drawing ? 'cursor-crosshair' : zoomed ? 'cursor-grab active:cursor-grabbing' : '',
         )}
         onPointerDown={onDown}
@@ -251,7 +329,10 @@ export function MosaicCanvas({
         onPointerUp={onUp}
         onPointerCancel={onUp}
       >
-        <canvas ref={canvasRef} className="block h-auto w-full select-none" />
+        {/* Sized in JS, in px, alongside the backing store. Sizing it with
+            w-full/h-full instead would make it read its parent while its
+            parent reads it. */}
+        <canvas ref={canvasRef} className="block select-none" />
 
         {overlay && (
           <div
@@ -298,7 +379,13 @@ export function MosaicCanvas({
       </div>
 
       {result && (
-        <p className="text-muted-foreground mt-2 font-mono text-[11px] tabular-nums">
+        // Inside the stage, directly under the piece. Left outside it, this sat
+        // at the bottom of a tall pane with the canvas centred far above, which
+        // read as a caption for nothing.
+        <p className={cn(
+          'text-muted-foreground font-mono text-[11px] tabular-nums',
+          fit ? 'mt-2 shrink-0 text-center' : 'mt-2',
+        )}>
           {result.filled.toLocaleString()} icons
           {result.cols > 0 && ` · ${result.cols}x${result.rows} cells`}
           {result.total > 0 && result.cols > 0 &&
@@ -307,6 +394,7 @@ export function MosaicCanvas({
           {zoomed && ' · drag to pan'}
         </p>
       )}
+      </div>
     </div>
   )
 }
