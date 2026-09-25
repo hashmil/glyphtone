@@ -112,12 +112,15 @@ export function buildFree(
         const mix = (p: number, d: number, s: number) =>
           Math.round(Math.min(255, Math.max(0, (p + (d - p) * tt) * 0.86 + s * 0.14)))
 
+        // `size` is the mark's height; a non-square pack is narrower than it.
+        const aspect = pack.aspect ?? 1
         placements.push({
           glyph: name,
           char: pack.chars?.[name],
-          x: ox - size / 2,
+          x: ox - (size * aspect) / 2,
           y: oy - size / 2,
-          scale: size / pack.set.grid,
+          scale: (size * aspect) / pack.set.grid,
+          scaleY: aspect === 1 ? undefined : size / pack.set.grid,
           r: mix(pale[0], deep[0], maps.rgb[idx * 3]),
           g: mix(pale[1], deep[1], maps.rgb[idx * 3 + 1]),
           b: mix(pale[2], deep[2], maps.rgb[idx * 3 + 2]),
@@ -128,7 +131,7 @@ export function buildFree(
 
   // Big pale marks first, small dark ones on top. Without this the coarse
   // pass paints over the detail every finer pass just added.
-  placements.sort((a, b) => b.scale - a.scale)
+  placements.sort((a, b) => (b.scaleY ?? b.scale) - (a.scaleY ?? a.scale))
 
   return {
     placements, used, width: outW, height: outH,

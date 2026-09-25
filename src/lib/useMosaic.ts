@@ -5,7 +5,7 @@ import { toDensityMaps, DEFAULT_OPTIONS, type DensityMaps } from '@/engine/mosai
 import { PACKS, DEFAULT_PACK } from '@/engine/packs'
 import { PALETTES, DEFAULT_PALETTE } from '@/engine/palettes'
 import { DEFAULT_PRESET, PRESETS } from '@/engine/presets'
-import { prepPhoto, DEFAULT_PREP, type PrepOptions } from '@/engine/prep'
+import { autoLift, liftPixels, prepPhoto, DEFAULT_PREP, type PrepOptions } from '@/engine/prep'
 import type { MosaicOptions, MosaicResult } from '@/engine/types'
 import { looksLikePhoto, type SourcePixels } from './image'
 
@@ -46,6 +46,7 @@ export function useMosaic() {
   const [presetId, setPresetId] = useState(DEFAULT_PRESET.id)
   const [prep, setPrep] = useState<PrepOptions>(DEFAULT_PREP)
   const [prepEnabled, setPrepEnabled] = useState(false)
+  const [lift, setLift] = useState(1)
   const [suggestPrep, setSuggestPrep] = useState(false)
   const [status, setStatus] = useState<Status>('idle')
   const [buildMs, setBuildMs] = useState(0)
@@ -59,7 +60,7 @@ export function useMosaic() {
   // Prep is the expensive half and depends only on the photo controls, so it
   // is cached against them. Dragging a density slider must not re-run a blur
   // over two megapixels.
-  const prepKey = prepEnabled ? JSON.stringify(prep) : 'off'
+  const prepKey = `${lift.toFixed(3)}:${prepEnabled ? JSON.stringify(prep) : 'off'}`
   const prepCache = useRef<{ key: string; src: SourcePixels | null; maps: DensityMaps } | null>(null)
 
   const run = useRef(0)
@@ -79,14 +80,15 @@ export function useMosaic() {
         : null
 
       if (!m) {
+        const lifted = liftPixels(source.data, lift)
         if (prepEnabled) {
           setStatus('preparing')
           await yieldToPaint()
           if (cancelled || token !== run.current) return
-          const out = prepPhoto(source.data, source.width, source.height, prep)
+          const out = prepPhoto(lifted, source.width, source.height, prep)
           m = toDensityMaps(out.data, source.width, source.height)
         } else {
-          m = toDensityMaps(source.data, source.width, source.height)
+          m = toDensityMaps(lifted, source.width, source.height)
         }
         prepCache.current = { key: prepKey, src: source, maps: m }
       }
@@ -105,7 +107,7 @@ export function useMosaic() {
     })()
 
     return () => { cancelled = true }
-  }, [source, prepKey, prepEnabled, prep, pack, palette, options])
+  }, [source, prepKey, prepEnabled, prep, lift, pack, palette, options])
 
   const load = useCallback(async (px: SourcePixels) => {
     setStatus('reading')
@@ -114,6 +116,8 @@ export function useMosaic() {
     const photo = looksLikePhoto(px)
     setSuggestPrep(photo)
     setPrepEnabled(photo)
+    // Artwork is left alone; a photo gets its mid-tones lifted into range.
+    setLift(photo ? autoLift(px.data) : 1)
     // A fresh image invalidates any focal box, drawn in the old image's pixels.
     setOptions((o) => ({ ...o, figureBox: null }))
   }, [])
@@ -148,9 +152,9 @@ export function useMosaic() {
 
   return {
     source, result, maps, options, pack, packId, palette, paletteId, presetId,
-    prep, prepEnabled, suggestPrep, status, buildMs,
+    prep, prepEnabled, suggestPrep, status, buildMs, lift,
     busy: status !== 'idle',
     load, update, applyPreset, reset,
-    setPackId, setPaletteId, setPrep, setPrepEnabled,
+    setPackId, setPaletteId, setPrep, setPrepEnabled, setLift,
   }
 }

@@ -144,8 +144,12 @@ export function buildMosaic(
   const outW = opts.width
   const outH = Math.round((outW * sh) / sw)
   const cols = Math.max(1, Math.round(opts.cols))
+  const aspect = pack.aspect ?? 1
   const cell = outW / cols
-  const rows = Math.max(1, Math.round(outH / cell))
+  // Cell height follows the pack's own cell shape. For a square pack this is
+  // the cell width and nothing changes.
+  const cellH = cell / aspect
+  const rows = Math.max(1, Math.round(outH / cellH))
 
   // A figure mask at source resolution, so it downsamples with everything else
   // and its edge lands on cell boundaries the same way the image does.
@@ -237,8 +241,11 @@ export function buildMosaic(
   }
 
   const size = cell * opts.gutter
+  const sizeH = cellH * opts.gutter
   const off = (cell - size) / 2
+  const offY = (cellH - sizeH) / 2
   const scale = size / set.grid
+  const scaleY = aspect === 1 ? undefined : sizeH / set.grid
 
   const placements: Placement[] = []
   const used = new Set<string>()
@@ -265,8 +272,9 @@ export function buildMosaic(
         glyph: name,
         char: pack.chars?.[name],
         x: i * cell + off,
-        y: j * cell + off,
+        y: j * cellH + offY,
         scale,
+        scaleY,
         r: mix(pale[0], deep[0], srcR[idx]),
         g: mix(pale[1], deep[1], srcG[idx]),
         b: mix(pale[2], deep[2], srcB[idx]),
@@ -276,6 +284,8 @@ export function buildMosaic(
 
   return {
     placements, used, width: outW, height: outH,
-    rows, cols, cell, filled: placements.length, total: n,
+    // `cell` is the crop bleed and cull margin, so it has to be the larger
+    // side of a non-square cell.
+    rows, cols, cell: Math.max(cell, cellH), filled: placements.length, total: n,
   }
 }

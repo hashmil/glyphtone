@@ -25,6 +25,27 @@ export interface Palette {
 
 export const PALETTES: Palette[] = [
   {
+    // The default. Tangerine for warm areas and violet for cool, so a
+    // portrait, which is almost all warm skin, comes out bright with its
+    // darkest features picked out in the contrasting hue.
+    id: 'sherbet',
+    label: 'Sherbet',
+    ramps: {
+      cool: [[230, 234, 255], [88, 66, 240]],
+      warm: [[255, 234, 218], [255, 96, 44]],
+      focus: [[255, 226, 240], [214, 18, 108]],
+    },
+  },
+  {
+    id: 'arcade',
+    label: 'Arcade',
+    ramps: {
+      cool: [[222, 248, 238], [0, 150, 112]],
+      warm: [[255, 226, 240], [226, 16, 132]],
+      focus: [[232, 230, 255], [72, 40, 230]],
+    },
+  },
+  {
     id: 'desert',
     label: 'Desert',
     ramps: {

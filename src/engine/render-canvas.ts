@@ -88,7 +88,7 @@ export function drawMosaic(
       lastFill = fill
     }
     const s = p.scale * scale
-    ctx.setTransform(s, 0, 0, s, x, y)
+    ctx.setTransform(s, 0, 0, (p.scaleY ?? p.scale) * scale, x, y)
     ctx.fill(path)
   }
 

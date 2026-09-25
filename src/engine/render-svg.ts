@@ -50,7 +50,7 @@ export function toSVG(
 
     parts.push(
       `<use xlink:href="#${p.glyph}" transform="translate(${p.x.toFixed(1)},${p.y.toFixed(1)}) ` +
-      `scale(${p.scale.toFixed(4)})" fill="#${hex(p.r)}${hex(p.g)}${hex(p.b)}"/>`,
+      `scale(${p.scaleY === undefined ? p.scale.toFixed(4) : `${p.scale.toFixed(4)},${p.scaleY.toFixed(4)}`})" fill="#${hex(p.r)}${hex(p.g)}${hex(p.b)}"/>`,
     )
   }
 

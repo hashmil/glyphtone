@@ -66,8 +66,11 @@ export interface Placement {
   glyph: string
   x: number
   y: number
-  /** multiplier from glyph grid units to output px */
+  /** multiplier from glyph grid units to output px, horizontally */
   scale: number
+  /** vertical multiplier, when it differs. Set only for packs drawn into a
+   *  non-square cell, such as ASCII in a terminal-shaped cell. */
+  scaleY?: number
   r: number
   g: number
   b: number

@@ -18,6 +18,7 @@ import { ZONE_IDS, type ZoneId } from './palettes'
 import asciiData from './ascii.json'
 import dingbatData from './dingbats.json'
 import emojiData from './emoji.json'
+import { themes } from './themes'
 
 export interface GlyphPack {
   id: string
@@ -37,6 +38,14 @@ export interface GlyphPack {
   chars?: Record<string, string>
   /** shown in the UI when a pack carries a caveat or attribution */
   note?: string
+  /** Width over height of the cell each glyph is designed for. 1 is square.
+   *
+   * ASCII is rasterised into a half-width terminal cell and stored square, so
+   * drawn into a square cell every character came out twice as wide as the
+   * font draws it. Laying it out in cells of its own shape restores the real
+   * letterforms. Ink coverage is a fraction of the cell, so a non-uniform
+   * scale leaves the tonal ladder exactly as measured. */
+  aspect?: number
 }
 
 // --- generation helpers ------------------------------------------------------
@@ -480,10 +489,10 @@ const dingbatSet = dingbatData as unknown as FontPackData
  * webfont has to load, or be present on the recipient's machine, for the
  * export to be correct. */
 function fontPack(
-  id: string, label: string, hint: string, set: FontPackData,
+  id: string, label: string, hint: string, set: FontPackData, aspect = 1,
 ): GlyphPack {
   return {
-    id, label, hint, set,
+    id, label, hint, set, aspect,
     zones: allZones(set),
     mode: 'mask',
     coverages: coverageTable(set),
@@ -528,8 +537,10 @@ function maskPack(
 }
 
 export const PACKS: GlyphPack[] = [
-  maskPack('motifs', 'Motifs',
-    'Hand-drawn symbols. Each zone gets its own family.', DEFAULT_SET, MOTIF_ZONES),
+  // Motif sets drawn in code: Gulf first, then the other themes. See themes.ts.
+  ...themes(Object.fromEntries(
+    Object.entries(smallMarks(24)).map(([k, m]) => [k, toGrid(m)]),
+  )).map((t) => maskPack(t.id, t.label, t.hint, t.set, t.zones)),
   maskPack('geometric', 'Geometric',
     'Outlined and solid primitives. Reads as drawn.', geometric),
   maskPack('stipple', 'Stipple',
@@ -543,7 +554,10 @@ export const PACKS: GlyphPack[] = [
   maskPack('box', 'Box drawing',
     'Rules, corners and junctions. Joins up across neighbouring cells.', box),
   fontPack('ascii', 'ASCII',
-    'Characters from a monospace face, sorted by measured density.', asciiSet),
+    'Characters from a monospace face, sorted by measured density.', asciiSet,
+    // Must match --aspect in tools/make-packs.mjs, which the pack was
+    // rasterised at.
+    0.5),
   maskPack('braille', 'Braille',
     'All 256 eight-dot cells, so tone steps one dot at a time.', braille),
   fontPack('dingbats', 'Dingbats',
@@ -564,6 +578,13 @@ export const PACKS: GlyphPack[] = [
 ]
 
 export const DEFAULT_PACK = PACKS[0]
+
+/** The Python prototype's hand-drawn vocabulary, 16 px. No longer offered in
+ *  the app, which uses the redrawn Gulf set, but kept because the engine's
+ *  parity tests compare against runs of the prototype made with exactly these
+ *  glyphs. */
+export const PROTOTYPE_MOTIFS = maskPack('prototype', 'Prototype motifs',
+  'The prototype\'s hand-drawn set.', DEFAULT_SET, MOTIF_ZONES)
 
 /** Coverage ladder a pack offers, for showing the user what they are picking
  *  and for checking a generated pack is not lumpy. */

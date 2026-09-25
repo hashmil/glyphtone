@@ -1,26 +1,15 @@
-import { useCallback, useState } from 'react'
-import { ImagePlus, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
 import { loadImageFile, type SourcePixels } from '@/lib/image'
-import { makeSample } from '@/lib/sample'
 import { cn } from '@/lib/utils'
 
-interface Props {
-  onLoad: (px: SourcePixels) => void
-  onError: (message: string) => void
-  /** `compact` is the landing-page form, where the drop target is one element
-   *  among several rather than the entire first screen. */
-  variant?: 'full' | 'compact'
-  className?: string
-}
-
-export function Dropzone({ onLoad, onError, variant = 'full', className }: Props) {
-  const [over, setOver] = useState(false)
-  const compact = variant === 'compact'
-
-  const accept = useCallback(
-    async (file: File | undefined) => {
+/** Reads a File into source pixels, reporting anything unusable. */
+export function useImageFile(
+  onLoad: (px: SourcePixels) => void,
+  onError: (message: string) => void,
+) {
+  return useCallback(
+    async (file: File | undefined | null) => {
       if (!file) return
       if (!file.type.startsWith('image/')) {
         onError('That is not an image file.')
@@ -34,61 +23,90 @@ export function Dropzone({ onLoad, onError, variant = 'full', className }: Props
     },
     [onLoad, onError],
   )
+}
+
+/** A hidden file input plus a function that opens it, so any button can be
+ *  the "choose a file" button. */
+export function useFilePicker(onFile: (file: File | undefined) => void) {
+  const ref = useRef<HTMLInputElement>(null)
+  const input = (
+    <input
+      ref={ref}
+      type="file"
+      accept="image/*"
+      className="hidden"
+      onChange={(e) => {
+        onFile(e.target.files?.[0])
+        // Reset so choosing the same file twice still fires a change.
+        e.target.value = ''
+      }}
+    />
+  )
+  return { input, open: () => ref.current?.click() }
+}
+
+/** The whole window is the drop target, on the landing page and in the
+ *  workspace alike. A boxed drop zone asks you to aim; there is no reason to. */
+export function DropOverlay({
+  onFile, label,
+}: {
+  onFile: (file: File | undefined) => void
+  label: string
+}) {
+  const [over, setOver] = useState(false)
+  // dragenter and dragleave fire for every child crossed, so count them rather
+  // than trusting the last event.
+  const depth = useRef(0)
+
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer?.types.includes('Files')
+    const enter = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      depth.current++
+      setOver(true)
+    }
+    const leave = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      depth.current = Math.max(0, depth.current - 1)
+      if (depth.current === 0) setOver(false)
+    }
+    const overFn = (e: DragEvent) => {
+      if (hasFiles(e)) e.preventDefault()
+    }
+    const drop = (e: DragEvent) => {
+      if (!hasFiles(e)) return
+      e.preventDefault()
+      depth.current = 0
+      setOver(false)
+      onFile(e.dataTransfer?.files?.[0])
+    }
+    window.addEventListener('dragenter', enter)
+    window.addEventListener('dragleave', leave)
+    window.addEventListener('dragover', overFn)
+    window.addEventListener('drop', drop)
+    return () => {
+      window.removeEventListener('dragenter', enter)
+      window.removeEventListener('dragleave', leave)
+      window.removeEventListener('dragover', overFn)
+      window.removeEventListener('drop', drop)
+    }
+  }, [onFile])
 
   return (
     <div
-      onDragOver={(e) => {
-        e.preventDefault()
-        setOver(true)
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => {
-        e.preventDefault()
-        setOver(false)
-        void accept(e.dataTransfer.files?.[0])
-      }}
+      aria-hidden={!over}
       className={cn(
-        'flex flex-col items-center justify-center rounded-xl border border-dashed text-center transition-colors',
-        compact ? 'gap-3 px-5 py-7 sm:flex-row sm:gap-5 sm:text-left' : 'px-6 py-16',
-        over ? 'border-foreground/40 bg-accent' : 'border-border',
-        className,
+        'pointer-events-none fixed inset-0 z-50 transition-opacity duration-150',
+        over ? 'opacity-100' : 'opacity-0',
       )}
     >
-      <ImagePlus
-        className={cn('text-muted-foreground shrink-0', compact ? 'size-6' : 'mb-4 size-7')}
-        strokeWidth={1.25}
-      />
-      <div className={cn('min-w-0', compact && 'flex-1')}>
-        <p className="text-[15px] font-medium">Drop an image</p>
-        <p className={cn(
-          'text-muted-foreground text-[13px] leading-relaxed',
-          compact ? 'mt-0.5' : 'mx-auto mt-1 max-w-sm',
-        )}>
-          Processed on your device and never uploaded. Photographs get an extra
-          prep step automatically.
+      <div className="bg-ink/80 absolute inset-0 backdrop-blur-sm" />
+      <div className="border-magenta absolute inset-4 border border-dashed sm:inset-6" />
+      <div className="absolute inset-0 flex items-center justify-center">
+        <p className="font-display text-fg text-center text-[clamp(32px,5vw,64px)] leading-none">
+          {label}
         </p>
-      </div>
-      <div className={cn(
-        'flex flex-wrap items-center justify-center gap-2',
-        compact ? 'shrink-0' : 'mt-6',
-      )}>
-        <Button asChild size="sm">
-          <label className="cursor-pointer">
-            Choose a file
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => void accept(e.target.files?.[0])}
-            />
-          </label>
-        </Button>
-        {!compact && (
-          <Button size="sm" variant="ghost" onClick={() => onLoad(makeSample())}>
-            <Sparkles className="size-3.5" />
-            Use a sample
-          </Button>
-        )}
       </div>
     </div>
   )

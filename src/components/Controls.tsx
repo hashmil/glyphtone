@@ -1,19 +1,12 @@
 import { useState } from 'react'
-import { ChevronDown, SquareDashed } from 'lucide-react'
+import { ChevronDown, SquareDashed, X } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
-import { Switch } from '@/components/ui/switch'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
-import { Field } from '@/components/Field'
 import { BackgroundControl } from '@/components/BackgroundControl'
+import { Btn, Fader, Section, Segmented, SwitchRow } from '@/components/kit'
+import { GlyphStrip, RampSwatch } from '@/components/specimen'
 import type { Background } from '@/engine/background'
 import { PACKS } from '@/engine/packs'
-import { PALETTES, ZONE_IDS } from '@/engine/palettes'
+import { PALETTES } from '@/engine/palettes'
 import { PRESETS } from '@/engine/presets'
 import type { PrepOptions } from '@/engine/prep'
 import type { Method, MosaicOptions } from '@/engine/types'
@@ -33,181 +26,201 @@ export interface ControlsProps {
   prepEnabled: boolean
   onPrepEnabled: (on: boolean) => void
   suggestPrep: boolean
+  lift: number
+  onLift: (v: number) => void
   drawingFocus: boolean
   onDrawingFocus: (on: boolean) => void
   hasFocus: boolean
   background: Background
   onBackground: (bg: Background) => void
-  /** `sheet` splits the same controls into tabs. Stacked, they are 1,145 px
-   *  tall, which is a long scroll inside a phone-height sheet. */
+  /** `sheet` shows one group at a time, chosen by `tab`. Stacked, the docket
+   *  is far taller than a phone sheet. */
   layout?: 'sidebar' | 'sheet'
-  /** Sheet layout only. Supplied when the tab is chosen outside the sheet, by
-   *  a segmented bar that also opens it, so the two cannot disagree. */
   tab?: SheetTab
-  onTab?: (tab: SheetTab) => void
 }
 
-export type SheetTab = 'style' | 'tone' | 'image' | 'more'
+export type SheetTab = 'style' | 'tone' | 'paper' | 'more'
 
 export const SHEET_TABS: Array<{ id: SheetTab; label: string }> = [
   { id: 'style', label: 'Style' },
   { id: 'tone', label: 'Tone' },
-  { id: 'image', label: 'Image' },
+  { id: 'paper', label: 'Paper' },
   { id: 'more', label: 'More' },
 ]
 
-function PackSelect(p: ControlsProps) {
+function LookSection(p: ControlsProps) {
+  const current = PRESETS.find((x) => x.id === p.presetId)
+  return (
+    <Section label="Look" value={current?.label ?? 'Custom'}>
+      <div className="flex flex-wrap gap-1.5">
+        {PRESETS.map((preset) => {
+          const on = preset.id === p.presetId
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              title={preset.hint}
+              aria-pressed={on}
+              onClick={() => p.onPreset(preset.id)}
+              className={cn(
+                'h-7 cursor-pointer rounded-sm border px-2.5 text-xs transition-colors',
+                on
+                  ? 'border-paper bg-paper text-ink'
+                  : 'border-rule-2 text-fg-2 hover:border-fg-2 hover:text-fg',
+              )}
+            >
+              {preset.label}
+            </button>
+          )
+        })}
+      </div>
+      {current && <p className="text-fg-2 mt-3 text-xs">{current.hint}.</p>}
+    </Section>
+  )
+}
+
+function GlyphSection(p: ControlsProps) {
   const pack = PACKS.find((x) => x.id === p.packId)
   return (
-    <div className="space-y-2">
-      <Label className="text-[13px] font-medium">Glyphs</Label>
-      <Select value={p.packId} onValueChange={p.onPack}>
-        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          {PACKS.map((k) => (
-            <SelectItem key={k.id} value={k.id}>
-              <span className="flex flex-col items-start">
-                <span>{k.label}</span>
-                <span className="text-muted-foreground text-[11px]">{k.hint}</span>
+    <Section label="Glyphs" value={pack?.label}>
+      <div className="grid grid-cols-3 gap-1.5">
+        {PACKS.map((k) => {
+          const on = k.id === p.packId
+          return (
+            <button
+              key={k.id}
+              type="button"
+              aria-pressed={on}
+              title={k.hint}
+              onClick={() => p.onPack(k.id)}
+              className={cn(
+                'group relative flex cursor-pointer flex-col items-start gap-2.5 overflow-hidden rounded-sm border px-2 pt-2.5 pb-2 text-left transition-colors',
+                on ? 'border-fg bg-raise' : 'border-rule hover:border-rule-2 hover:bg-raise/60',
+              )}
+            >
+              <GlyphStrip
+                pack={k}
+                count={5}
+                size={12}
+                color={on ? '#ededeb' : '#9b9b98'}
+                className="transition-opacity"
+              />
+              <span className={cn('text-xs', on ? 'text-fg' : 'text-fg-2 group-hover:text-fg')}>
+                {k.label}
               </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {pack?.note && (
-        <p className="text-[11px] leading-snug text-amber-700">{pack.note}</p>
-      )}
-    </div>
+              {on && <span className="bg-magenta absolute top-1.5 right-1.5 size-1" aria-hidden />}
+            </button>
+          )
+        })}
+      </div>
+      {pack && <p className="text-fg-2 mt-3 text-xs">{pack.hint}</p>}
+      {pack?.note && <p className="text-fg-3 mt-1.5 text-xs">{pack.note}</p>}
+    </Section>
   )
 }
 
-function MethodSelect(p: ControlsProps) {
+function PlacementSection(p: ControlsProps) {
+  const organic = p.options.method === 'organic'
   return (
-    <div className="space-y-2">
-      <Label className="text-[13px] font-medium">Placement</Label>
-      <Select
+    <Section label="Placement">
+      <Segmented<Method>
         value={p.options.method}
-        onValueChange={(v) => p.onChange({ method: v as Method })}
-      >
-        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="grid">
-            <span className="flex flex-col items-start">
-              <span>Ordered</span>
-              <span className="text-muted-foreground text-[11px]">
-                One icon per cell, nothing overlaps.
-              </span>
-            </span>
-          </SelectItem>
-          <SelectItem value="organic">
-            <span className="flex flex-col items-start">
-              <span>Organic</span>
-              <span className="text-muted-foreground text-[11px]">
-                Scattered and overlapping. Messier, far more marks, goes darker.
-              </span>
-            </span>
-          </SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
+        onChange={(method) => p.onChange({ method })}
+        options={[
+          { id: 'grid', label: 'Ordered' },
+          { id: 'organic', label: 'Organic' },
+        ]}
+      />
+      <p className="text-fg-2 mt-3 text-xs">
+        {organic
+          ? 'Scattered and overlapping. Messier, far more marks, and it goes darker than a grid can.'
+          : 'One glyph per cell of a fixed lattice. Nothing overlaps.'}
+      </p>
+    </Section>
   )
 }
 
-function PaletteSelect(p: ControlsProps) {
+function ColourSection(p: ControlsProps) {
+  const palette = PALETTES.find((x) => x.id === p.paletteId)
+  const pack = PACKS.find((x) => x.id === p.packId)
+  const ignored = pack?.mode === 'text'
   return (
-    <div className="space-y-2">
-      <Label className="text-[13px] font-medium">Colour</Label>
-      <Select value={p.paletteId} onValueChange={p.onPalette}>
-        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          {PALETTES.map((pal) => (
-            <SelectItem key={pal.id} value={pal.id}>
-              <span className="flex items-center gap-2">
-                <span className="flex">
-                  {ZONE_IDS.map((z) => (
-                    <span
-                      key={z}
-                      className="size-3 rounded-[2px] ring-1 ring-black/10"
-                      style={{ background: `rgb(${pal.ramps[z][1].join(',')})` }}
-                    />
-                  ))}
-                </span>
+    <Section label="Colour" value={palette?.label}>
+      <div className={cn('grid grid-cols-3 gap-1.5', ignored && 'opacity-40')}>
+        {PALETTES.map((pal) => {
+          const on = pal.id === p.paletteId
+          return (
+            <button
+              key={pal.id}
+              type="button"
+              aria-pressed={on}
+              onClick={() => p.onPalette(pal.id)}
+              className={cn(
+                'group flex cursor-pointer flex-col gap-2 rounded-sm border p-2 text-left transition-colors',
+                on ? 'border-fg bg-raise' : 'border-rule hover:border-rule-2 hover:bg-raise/60',
+              )}
+            >
+              <RampSwatch palette={pal} className="w-full" />
+              <span className={cn('text-xs', on ? 'text-fg' : 'text-fg-2 group-hover:text-fg')}>
                 {pal.label}
               </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  )
-}
-
-function PresetSelect(p: ControlsProps) {
-  return (
-    <div className="space-y-2">
-      <Label className="text-[13px] font-medium">Look</Label>
-      <Select value={p.presetId} onValueChange={p.onPreset}>
-        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-        <SelectContent>
-          {PRESETS.map((preset) => (
-            <SelectItem key={preset.id} value={preset.id}>
-              <span className="flex flex-col items-start">
-                <span>{preset.label}</span>
-                <span className="text-muted-foreground text-[11px]">{preset.hint}</span>
-              </span>
-            </SelectItem>
-          ))}
-          {p.presetId === 'custom' && <SelectItem value="custom">Custom</SelectItem>}
-        </SelectContent>
-      </Select>
-    </div>
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-fg-2 mt-3 text-xs">
+        {ignored
+          ? 'Emoji draw in their own colour, so the palette has no effect on this set.'
+          : 'Top to bottom: cool areas, warm areas, focal region. Each runs from pale to deep.'}
+      </p>
+    </Section>
   )
 }
 
 function ToneFields(p: ControlsProps) {
   const organic = p.options.method === 'organic'
   return (
-    <>
+    <div className="space-y-6">
       {organic ? (
         <>
-          <Field
+          <Fader
             label="Density"
-            hint="How many marks get placed. The count rises with the square of this, so small steps do a lot: 0.55 is around 19,000 marks, 1.5 is around 140,000."
+            hint="The mark count rises with the square of this. 0.55 is around 19,000 marks, 1.5 around 140,000."
             value={p.options.density} min={0.15} max={3} step={0.05}
             format={(v) => v.toFixed(2)}
             onChange={(density) => p.onChange({ density })}
           />
-          <Field
+          <Fader
             label="Mark size"
-            hint="Independent of the count, so sparse and large is reachable. Overlap is what lets organic go genuinely dark."
+            hint="Independent of the count, so sparse and large is reachable."
             value={p.options.glyphScale} min={0.4} max={4} step={0.05}
-            format={(v) => `${v.toFixed(2)}x`}
+            format={(v) => `${v.toFixed(2)}×`}
             onChange={(glyphScale) => p.onChange({ glyphScale })}
           />
-          <Field
+          <Fader
             label="Size spread"
-            hint="How much marks vary in size around that. Zero makes every mark in a pass identical, which reads as a stamp."
+            hint="Zero makes every mark in a pass identical, which reads as a stamp."
             value={p.options.sizeJitter} min={0} max={0.6} step={0.01}
             format={(v) => `±${Math.round(v * 100)}%`}
             onChange={(sizeJitter) => p.onChange({ sizeJitter })}
           />
         </>
       ) : (
-        <Field
+        <Fader
           label="Columns"
-          hint="Cells across the long edge. The single strongest control over how the piece reads, and the one number that decides whether the glyphs are legible."
+          hint="Cells across the long edge. The strongest control over how the piece reads, and what decides whether each glyph is legible."
           value={p.options.cols} min={40} max={700} step={5}
           onChange={(cols) => p.onChange({ cols })}
         />
       )}
-      <Field
+      <Fader
         label="Contrast"
         value={p.options.contrast} min={0.5} max={1.8} step={0.01}
         format={(v) => v.toFixed(2)}
         onChange={(contrast) => p.onChange({ contrast })}
       />
       {organic ? (
-        <Field
+        <Fader
           label="Weighting"
           hint="How strongly darkness picks a heavier glyph rather than chance."
           value={p.options.weightBias} min={0} max={1} step={0.01}
@@ -215,80 +228,79 @@ function ToneFields(p: ControlsProps) {
           onChange={(weightBias) => p.onChange({ weightBias })}
         />
       ) : (
-        <Field
+        <Fader
           label="Sparkle"
-          hint="Per-cell lightness jitter. A little is what stops a flat area reading as a wash."
+          hint="Per-cell lightness jitter. A little stops a flat area reading as a wash."
           value={p.options.valnoise} min={0} max={0.6} step={0.01}
           format={(v) => v.toFixed(2)}
           onChange={(valnoise) => p.onChange({ valnoise })}
         />
       )}
-    </>
-  )
-}
-
-function FocusControl(p: ControlsProps) {
-  return (
-    <div className="space-y-2">
-      <Button
-        variant={p.drawingFocus ? 'default' : 'outline'}
-        size="sm"
-        className="w-full justify-start"
-        onClick={() => p.onDrawingFocus(!p.drawingFocus)}
-      >
-        <SquareDashed className="size-3.5" />
-        {p.drawingFocus ? 'Drag on the image' : 'Set focal region'}
-      </Button>
-      <p className="text-muted-foreground text-[11px] leading-snug">
-        {p.hasFocus
-          ? 'This region gets its own icons and colour ramp. Tap once on the image to clear it.'
-          : 'Optional. Marks a subject so it keeps its own icons and colour instead of blending into the background.'}
-      </p>
     </div>
   )
 }
 
-function PrepControls(p: ControlsProps) {
+function FocusSection(p: ControlsProps) {
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <span className="flex items-center gap-2">
-            <Label className="text-[13px] font-medium">Photograph prep</Label>
-            {p.suggestPrep && !p.prepEnabled && (
-              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-900">
-                suggested
-              </span>
-            )}
-          </span>
-          <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
-            A photo has tone everywhere, so fed in raw it fills every cell and
-            reads as a slab. This removes the broad lighting and keeps real
-            darkness.
-          </p>
-        </div>
-        <Switch
-          className="shrink-0"
-          checked={p.prepEnabled}
-          onCheckedChange={p.onPrepEnabled}
-        />
+    <Section label="Focal region" value={p.hasFocus ? 'set' : 'none'}>
+      <div className="flex gap-1.5">
+        <Btn
+          tone={p.drawingFocus ? 'paper' : 'line'}
+          className="flex-1 justify-start"
+          onClick={() => p.onDrawingFocus(!p.drawingFocus)}
+        >
+          <SquareDashed />
+          {p.drawingFocus ? 'Drag on the image' : p.hasFocus ? 'Redraw region' : 'Draw a region'}
+        </Btn>
+        {p.hasFocus && (
+          <Btn tone="line" aria-label="Clear focal region" onClick={() => p.onChange({ figureBox: null })}>
+            <X />
+          </Btn>
+        )}
       </div>
+      <p className="text-fg-2 mt-3 text-xs">
+        Marks a subject so it keeps its own glyphs and colour ramp instead of
+        blending into the background.
+      </p>
+    </Section>
+  )
+}
 
+function PrepSection(p: ControlsProps) {
+  return (
+    <Section label="Photograph">
+      <Fader
+        label="Lift"
+        hint="Brightens the mid-tones before anything else. A dark photo needs this, or all its shadows read as the same solid ink. Set from the image when it loads."
+        value={p.lift} min={1} max={3} step={0.05}
+        format={(v) => v.toFixed(2)}
+        onChange={p.onLift}
+      />
+      <div className="mt-6" />
+      <SwitchRow
+        label="Prepare as a photo"
+        checked={p.prepEnabled}
+        onChange={p.onPrepEnabled}
+        badge={p.suggestPrep && !p.prepEnabled && (
+          <span className="text-yellow font-mono text-xs">suggested</span>
+        )}
+        hint="A photo has tone everywhere, so fed in raw it fills every cell and reads as a slab. This removes the broad lighting and keeps real darkness."
+      />
       {p.prepEnabled && (
-        <div className="space-y-4">
-          <Field
+        <div className="mt-6 space-y-6">
+          <Fader
             label="Detail" hint="Lower keeps more local texture."
             value={p.prep.detail} min={0.2} max={1.2} step={0.01}
             format={(v) => v.toFixed(2)}
             onChange={(detail) => p.onPrep({ detail })}
           />
-          <Field
+          <Fader
             label="Darkness threshold"
             value={p.prep.dark} min={0.3} max={0.9} step={0.01}
             format={(v) => v.toFixed(2)}
             onChange={(dark) => p.onPrep({ dark })}
           />
-          <Field
+          <Fader
             label="Flat-field radius"
             hint="As a fraction of the long edge. Large enough to be the lighting, not the subject."
             value={p.prep.radius} min={0.005} max={0.12} step={0.001}
@@ -297,144 +309,123 @@ function PrepControls(p: ControlsProps) {
           />
         </div>
       )}
-    </div>
+    </Section>
   )
 }
 
 function AdvancedFields(p: ControlsProps) {
   const organic = p.options.method === 'organic'
   return (
-    <div className="space-y-4">
-      <Field
+    <div className="space-y-6">
+      <Fader
         label="Gamma"
         hint="Tone curve applied before the ladder. Below 1 lifts the mid tones."
         value={p.options.gamma} min={0.4} max={1.6} step={0.01}
         format={(v) => v.toFixed(2)}
         onChange={(gamma) => p.onChange({ gamma })}
       />
-      <Field
+      <Fader
         label="Floor"
-        hint="Cells below this ink level stay empty, which is what keeps the page open."
+        hint="Cells below this ink level stay empty, which keeps the page open."
         value={p.options.floor} min={0} max={0.3} step={0.005}
         format={(v) => v.toFixed(3)}
         onChange={(floor) => p.onChange({ floor })}
       />
       {!organic && (
         <>
-          <Field
+          <Fader
             label="Variety"
-            hint="Coverage tolerance within which glyphs count as interchangeable. Zero repeats one icon per tone."
+            hint="Coverage tolerance within which glyphs count as interchangeable. Zero repeats one glyph per tone."
             value={p.options.vary} min={0} max={0.2} step={0.005}
             format={(v) => v.toFixed(3)}
             onChange={(vary) => p.onChange({ vary })}
           />
-          <Field
-            label="Icon size"
-            hint="Fraction of the cell. Below 1 opens white space between neighbours."
+          <Fader
+            label="Glyph size"
+            hint="Fraction of the cell. Below 1 opens space between neighbours."
             value={p.options.gutter} min={0.5} max={1} step={0.01}
             format={(v) => v.toFixed(2)}
             onChange={(gutter) => p.onChange({ gutter })}
           />
         </>
       )}
-      <Field
+      <Fader
         label="Seed"
         value={p.options.seed} min={1} max={99} step={1}
         onChange={(seed) => p.onChange({ seed })}
       />
       {!organic && (
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <Label className="text-[13px] font-medium">Knockout tiles</Label>
-            <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
-              Solid cells with the icon punched out. The only way an ordered
-              grid reaches near-black, but they read as stickers rather than
-              as marks.
-            </p>
-          </div>
-          <Switch
-            className="shrink-0"
-            checked={p.options.knockout}
-            onCheckedChange={(knockout) => p.onChange({ knockout })}
-          />
-        </div>
+        <SwitchRow
+          label="Knockout tiles"
+          checked={p.options.knockout}
+          onChange={(knockout) => p.onChange({ knockout })}
+          hint="Solid cells with the glyph punched out. The only way an ordered grid reaches near-black, but they read as stickers rather than marks."
+        />
       )}
     </div>
   )
 }
 
-/** Collapsible section, used only in the sidebar. The sheet uses tabs. */
-function Collapsible({ label, children }: { label: string; children: React.ReactNode }) {
+function AdvancedSection(p: ControlsProps) {
   const [open, setOpen] = useState(false)
   return (
-    <section className="space-y-4">
+    <section className="border-rule border-b">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between text-left"
+        aria-expanded={open}
+        className="hover:bg-raise/60 flex w-full cursor-pointer items-center justify-between px-5 py-4 text-left"
       >
-        <Label className="cursor-pointer text-[13px] font-medium">{label}</Label>
-        <ChevronDown
-          className={cn('text-muted-foreground size-4 transition-transform', open && 'rotate-180')}
-        />
+        <span className="text-fg-2 font-mono text-xs">Advanced</span>
+        <ChevronDown className={cn('text-fg-2 size-3.5 transition-transform', open && 'rotate-180')} />
       </button>
-      {open && children}
+      {open && <div className="px-5 pt-1 pb-6"><AdvancedFields {...p} /></div>}
     </section>
   )
 }
 
 export function Controls(p: ControlsProps) {
   if (p.layout === 'sheet') {
-    return (
-      <Tabs
-        value={p.tab}
-        defaultValue={p.tab ? undefined : 'style'}
-        onValueChange={(v) => p.onTab?.(v as SheetTab)}
-        className="w-full"
-      >
-        <TabsList className="grid w-full grid-cols-4">
-          {SHEET_TABS.map((t) => (
-            <TabsTrigger key={t.id} value={t.id}>{t.label}</TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value="style" className="space-y-5 pt-4">
-          <PackSelect {...p} />
-          <MethodSelect {...p} />
-          <PaletteSelect {...p} />
-        </TabsContent>
-        <TabsContent value="tone" className="space-y-5 pt-4">
-          <PresetSelect {...p} />
-          <ToneFields {...p} />
-        </TabsContent>
-        <TabsContent value="image" className="space-y-5 pt-4">
-          <BackgroundControl value={p.background} onChange={p.onBackground} />
-          <Separator />
-          <FocusControl {...p} />
-          <Separator />
-          <PrepControls {...p} />
-        </TabsContent>
-        <TabsContent value="more" className="pt-4">
-          <AdvancedFields {...p} />
-        </TabsContent>
-      </Tabs>
-    )
+    switch (p.tab ?? 'style') {
+      case 'style':
+        return (
+          <>
+            <LookSection {...p} />
+            <GlyphSection {...p} />
+            <PlacementSection {...p} />
+            <ColourSection {...p} />
+          </>
+        )
+      case 'tone':
+        return <Section label="Tone"><ToneFields {...p} /></Section>
+      case 'paper':
+        return (
+          <>
+            <Section label="Paper">
+              <BackgroundControl value={p.background} onChange={p.onBackground} />
+            </Section>
+            <FocusSection {...p} />
+            <PrepSection {...p} />
+          </>
+        )
+      case 'more':
+        return <Section label="Advanced"><AdvancedFields {...p} /></Section>
+    }
   }
 
   return (
-    <div className="space-y-5">
-      <PresetSelect {...p} />
-      <PackSelect {...p} />
-      <MethodSelect {...p} />
-      <PaletteSelect {...p} />
-      <ToneFields {...p} />
-      <Separator />
-      <BackgroundControl value={p.background} onChange={p.onBackground} />
-      <Separator />
-      <FocusControl {...p} />
-      <Separator />
-      <PrepControls {...p} />
-      <Separator />
-      <Collapsible label="Advanced"><AdvancedFields {...p} /></Collapsible>
-    </div>
+    <>
+      <LookSection {...p} />
+      <GlyphSection {...p} />
+      <PlacementSection {...p} />
+      <ColourSection {...p} />
+      <Section label="Tone"><ToneFields {...p} /></Section>
+      <Section label="Paper">
+        <BackgroundControl value={p.background} onChange={p.onBackground} />
+      </Section>
+      <FocusSection {...p} />
+      <PrepSection {...p} />
+      <AdvancedSection {...p} />
+    </>
   )
 }

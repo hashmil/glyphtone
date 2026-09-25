@@ -8,6 +8,15 @@ it can be printed at any size.
 Everything runs in your browser. No image is uploaded, there is no backend, and
 the whole thing deploys as static files.
 
+![The landing page: a live mosaic of the sample portrait with a loupe showing the Gulf glyphs up close](docs/screenshots/landing.webp)
+
+![The workspace with Compare on: the original photo left of the divider, the glyph mosaic right of it, and the controls docked on the right](docs/screenshots/compare.webp)
+
+<p>
+  <img src="docs/screenshots/glyph-sets.webp" width="68%" alt="The glyph sets, each shown with its ladder of glyphs from light to dark" />
+  <img src="docs/screenshots/phone.webp" width="28%" alt="The workspace on a phone, with the controls in a sheet under the piece" />
+</p>
+
 ---
 
 ## What it does
@@ -21,18 +30,24 @@ artboard.
 
 | Pack | What it is |
 |---|---|
-| Motifs | Hand-drawn symbols. Each zone draws on its own family. |
+| Gulf | Dallah, dhow, palm, camel, minaret, mashrabiya. Each zone draws on its own family. |
+| Night sky | Stars, moons, planets, comets. |
+| Garden | Leaves, flowers, sprouts, pines. |
+| Seaside | Fish, anchors, shells, boats. |
 | Geometric | Outlined and solid primitives. Reads as drawn. |
 | Stipple | Dots only, growing with tone. The most photographic. |
 | Hatching | Strokes at increasing weight and angle. Like engraving. |
 | Blocks | Unicode block elements and ordered dither. The evenest ladder. |
-| ASCII | 68 real characters from a monospace font. |
+| ASCII | 94 characters from IBM Plex Mono, laid out in terminal-shaped cells. |
 | Emoji | Drawn in their own colour, picked by how dark each one renders. |
 
 **Placement** is either ordered or organic. Ordered puts one icon per cell of a
 fixed lattice so nothing overlaps. Organic scatters marks at four scales with
 varying size and overlap; it is messier, places far more marks, and can reach
 darker than a grid ever can.
+
+**Before and after.** Compare, or `C`, puts the original under a draggable
+divider on the piece, and holds its position while you zoom and pan.
 
 **Zones.** The image is split into cool areas, warm areas and an optional focal
 region you drag on the picture. Each gets its own colour ramp and its own slice
@@ -77,6 +92,12 @@ On a test image, a photo straight in fills 84% of cells; prepped it fills 57%,
 and that difference is the whole gap between a slab and an image. It turns
 itself on automatically when the frame has little near-white in it.
 
+Low-key photos need one more step before that. The ink map counts anything
+darker than about 38% luminance as full ink, so a portrait in raking light
+clips its whole shadow side to one solid tone before contrast or gamma can do
+anything. **Lift** brightens the mid-tones first, and is set on load so the
+photo's median luminance lands at 0.45.
+
 ---
 
 ## Design notes
@@ -86,8 +107,11 @@ Things that are not obvious and were arrived at by measuring.
 **A non-overlapping grid cannot go darker than its heaviest single glyph.**
 This is why every pack is checked for the range it spans. Rendering ASCII
 characters into a square cell left each one surrounded by dead space and capped
-the pack at 0.19 coverage, which reads grey however you tune it; rendering into
-a real terminal cell aspect and stretching gives 0.031 to 0.449.
+the pack at 0.19 coverage, which reads grey however you tune it. So ASCII is
+rasterised into a half-width terminal cell, and the grid lays it out in cells
+of that same shape (`GlyphPack.aspect`), which keeps the letterforms true
+instead of stretching them to square. Coverage is a fraction of the cell, so
+the ladder is unchanged: 0.031 to 0.343 at 32 px in Plex Mono Medium.
 
 **Emoji have to be measured, not ordered.** Published ASCII density ramps are
 orderings for one particular font. The engine measures each glyph's coverage
@@ -235,9 +259,11 @@ The remaining Python tools need Python with Pillow and a prototype checkout:
 
 MIT. See [LICENSE](LICENSE).
 
-The bundled glyph packs are original work or generated: the motif set is
-hand-drawn, and the geometric, stipple, hatching, blocks, halftone, box-drawing
-and braille packs are generated in code.
+The bundled glyph packs are original work or generated. The Gulf, Night sky,
+Garden and Seaside motifs are drawn in code from primitives in
+`src/engine/themes.ts`; the geometric, stipple, hatching, blocks, halftone,
+box-drawing and braille packs are generated in code. The prototype's original
+hand-drawn motifs are kept in `glyphs.json` for the engine's parity tests.
 
 The ASCII and dingbat packs are rasterised at build time from Google Fonts
 releases under the SIL Open Font License, IBM Plex Mono and Noto Sans Symbols 2,
@@ -248,5 +274,10 @@ needs no font on the machine that opens it.
 The emoji pack references system emoji rather than shipping any, so what it
 renders depends on the machine viewing it. That is why the UI steers emoji
 exports towards PNG.
+
+The interface is set in IBM Plex Sans and IBM Plex Mono (SIL Open Font
+License), bundled with the app. The glyph packs do not depend on them.
+
+The sample portrait in `src/assets/sample.webp` is included for the demo.
 
 Images you put in stay on your device and are never uploaded.

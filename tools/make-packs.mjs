@@ -18,12 +18,18 @@ const JOBS = [
   {
     name: 'ascii',
     args: [
-      '--font', `${PLEX}/files/ibm-plex-mono-latin-400-normal.woff2`,
+      // Medium rather than regular: at 32 px the regular weight's strokes are
+      // drawn true to width, and its heaviest glyph tops out at 0.29 ink,
+      // under the 0.3 a pack needs to reach dark.
+      '--font', `${PLEX}/files/ibm-plex-mono-latin-500-normal.woff2`,
       '--unicode', `${process.cwd()}/${PLEX}/unicode.json`, '--subset', 'latin',
       '--out', 'src/engine/ascii.json',
       '--chars', ASCII, '--key', 'ascii',
       // A terminal cell, which is what ASCII art is composed for.
+      // The app draws ASCII into cells of this same shape (GlyphPack.aspect),
+      // so the letters keep the proportions the font gave them.
       '--aspect', '0.5',
+      '--grid', '32',
       '--label', 'IBM Plex Mono',
     ],
   },

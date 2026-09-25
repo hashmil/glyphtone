@@ -28,8 +28,8 @@ function drawToCanvas(img: CanvasImageSource, w: number, h: number): SourcePixel
   return { data, width: w, height: h }
 }
 
-export async function loadImageFile(file: File): Promise<SourcePixels> {
-  const bitmap = await createImageBitmap(file)
+export async function decodeImage(blob: Blob): Promise<SourcePixels> {
+  const bitmap = await createImageBitmap(blob)
   try {
     const scale = Math.min(1, MAX_SOURCE_EDGE / Math.max(bitmap.width, bitmap.height))
     const w = Math.max(1, Math.round(bitmap.width * scale))
@@ -47,6 +47,8 @@ export async function loadImageFile(file: File): Promise<SourcePixels> {
  * fills every cell and reads as a slab, so this decides whether to suggest the
  * prep step rather than letting the user find out from a bad result.
  */
+export const loadImageFile = (file: File): Promise<SourcePixels> => decodeImage(file)
+
 export function looksLikePhoto(px: SourcePixels): boolean {
   const { data, width, height } = px
   const n = width * height

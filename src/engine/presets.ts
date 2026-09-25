@@ -30,7 +30,7 @@ export const PRESETS: Preset[] = [
     label: 'Balanced',
     hint: 'Even tone, icons still readable one by one',
     packId: 'motifs',
-    paletteId: 'desert',
+    paletteId: 'sherbet',
     card: true,
     options: {
       method: 'grid',

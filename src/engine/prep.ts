@@ -167,3 +167,49 @@ export function prepPhoto(
 
   return { data: out, meanInk: inkSum / n, coverage: above / n }
 }
+
+/** Brighten a photograph before the ink map sees it.
+ *
+ * The ink map treats anything darker than about 38% luminance as full ink,
+ * which suits high-key artwork and flattens a low-key photo: every shadow
+ * clips to the same solid tone before contrast or gamma get a say, and a
+ * portrait in raking light turns into two slabs. Lifting the mid-tones first
+ * moves that tone back into the range the ladder can express.
+ *
+ * `lift` is an inverse gamma on each channel. 1 leaves the pixels untouched.
+ */
+export function liftPixels(data: Uint8ClampedArray, lift: number): Uint8ClampedArray {
+  if (Math.abs(lift - 1) < 1e-3) return data
+  const lut = new Uint8ClampedArray(256)
+  for (let v = 0; v < 256; v++) lut[v] = Math.round(255 * Math.pow(v / 255, 1 / lift))
+  const out = new Uint8ClampedArray(data.length)
+  for (let i = 0; i < data.length; i += 4) {
+    out[i] = lut[data[i]]
+    out[i + 1] = lut[data[i + 1]]
+    out[i + 2] = lut[data[i + 2]]
+    out[i + 3] = data[i + 3]
+  }
+  return out
+}
+
+/** The lift that puts a photo's median luminance at `target`. Clamped so a
+ *  bright photo is never darkened and a near-black one is not blown out. */
+export function autoLift(data: Uint8ClampedArray, target = 0.45): number {
+  const hist = new Uint32Array(256)
+  const n = data.length / 4
+  const step = Math.max(1, Math.floor(n / 40000))
+  let seen = 0
+  for (let i = 0; i < n; i += step) {
+    const p = i * 4
+    hist[Math.round(0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2])]++
+    seen++
+  }
+  let acc = 0
+  let median = 128
+  for (let v = 0; v < 256; v++) {
+    acc += hist[v]
+    if (acc >= seen / 2) { median = v; break }
+  }
+  const m = Math.min(0.95, Math.max(0.03, median / 255))
+  return Math.min(3, Math.max(1, Math.log(m) / Math.log(target)))
+}
