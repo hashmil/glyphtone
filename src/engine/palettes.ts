@@ -174,3 +174,19 @@ export const PALETTES: Palette[] = [
 ]
 
 export const DEFAULT_PALETTE = PALETTES[0]
+
+/** The id of the palette the user builds themselves. Not in PALETTES: its
+ *  ramps live in app state, seeded from whichever preset was showing. */
+export const CUSTOM_PALETTE_ID = 'custom'
+
+const isRgb = (v: unknown): v is [number, number, number] =>
+  Array.isArray(v) && v.length === 3 && v.every((n) => Number.isFinite(n) && n >= 0 && n <= 255)
+
+/** Checks a stored value really is a set of ramps before it is used, since
+ *  browser storage can hold anything an older version wrote. */
+export function isRamps(v: unknown): v is Palette['ramps'] {
+  if (!v || typeof v !== 'object') return false
+  const r = v as Record<string, unknown>
+  return ZONE_IDS.every((z) => Array.isArray(r[z]) && (r[z] as unknown[]).length === 2 &&
+    isRgb((r[z] as unknown[])[0]) && isRgb((r[z] as unknown[])[1]))
+}

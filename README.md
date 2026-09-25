@@ -46,6 +46,12 @@ fixed lattice so nothing overlaps. Organic scatters marks at four scales with
 varying size and overlap; it is messier, places far more marks, and can reach
 darker than a grid ever can.
 
+**Custom colours.** Besides the preset palettes there is a Custom one: a pale
+and a deep colour for each zone, starting from whichever preset was showing.
+It is kept in the browser, so it is still there next visit.
+
+![The custom palette editor: pale and deep colours for cool areas, warm areas and the focal region, with the piece redrawn in green and navy](docs/screenshots/custom-colours.webp)
+
 **Before and after.** Compare, or `C`, puts the original under a draggable
 divider on the piece, and holds its position while you zoom and pan.
 

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { build } from '@/engine/build'
 import { toDensityMaps, DEFAULT_OPTIONS, type DensityMaps } from '@/engine/mosaic'
 import { PACKS, DEFAULT_PACK } from '@/engine/packs'
-import { PALETTES, DEFAULT_PALETTE } from '@/engine/palettes'
+import { PALETTES, DEFAULT_PALETTE, CUSTOM_PALETTE_ID, isRamps, type Palette } from '@/engine/palettes'
 import { DEFAULT_PRESET, PRESETS } from '@/engine/presets'
 import { autoLift, liftPixels, prepPhoto, DEFAULT_PREP, type PrepOptions } from '@/engine/prep'
 import type { MosaicOptions, MosaicResult } from '@/engine/types'
@@ -32,6 +32,19 @@ export const STATUS_LABEL: Record<Exclude<Status, 'idle'>, string> = {
 const yieldToPaint = () =>
   new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 0)))
 
+/** Where the custom palette is kept between visits. Per browser, which is the
+ *  right scope for a colour scheme someone is working on. */
+const CUSTOM_KEY = 'glyphtone.customPalette'
+
+function readCustom(): Palette['ramps'] | null {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(CUSTOM_KEY) ?? 'null')
+    return isRamps(v) ? v : null
+  } catch {
+    return null
+  }
+}
+
 export function useMosaic() {
   const [source, setSource] = useState<SourcePixels | null>(null)
   const [result, setResult] = useState<MosaicResult | null>(null)
@@ -42,7 +55,10 @@ export function useMosaic() {
     width: PREVIEW_WIDTH,
   })
   const [packId, setPackId] = useState(DEFAULT_PACK.id)
-  const [paletteId, setPaletteId] = useState(DEFAULT_PALETTE.id)
+  const [paletteId, setPaletteIdRaw] = useState(DEFAULT_PALETTE.id)
+  // The last preset palette chosen. Custom starts from it, and resets to it.
+  const [basePaletteId, setBasePaletteId] = useState(DEFAULT_PALETTE.id)
+  const [customRamps, setCustomRampsRaw] = useState<Palette['ramps'] | null>(readCustom)
   const [presetId, setPresetId] = useState(DEFAULT_PRESET.id)
   const [prep, setPrep] = useState<PrepOptions>(DEFAULT_PREP)
   const [prepEnabled, setPrepEnabled] = useState(false)
@@ -52,9 +68,40 @@ export function useMosaic() {
   const [buildMs, setBuildMs] = useState(0)
 
   const pack = useMemo(() => PACKS.find((p) => p.id === packId) ?? DEFAULT_PACK, [packId])
-  const palette = useMemo(
-    () => PALETTES.find((p) => p.id === paletteId) ?? DEFAULT_PALETTE,
-    [paletteId],
+  const basePalette = useMemo(
+    () => PALETTES.find((p) => p.id === basePaletteId) ?? DEFAULT_PALETTE,
+    [basePaletteId],
+  )
+  const palette = useMemo<Palette>(
+    () => paletteId === CUSTOM_PALETTE_ID
+      ? { id: CUSTOM_PALETTE_ID, label: 'Custom', ramps: customRamps ?? basePalette.ramps }
+      : PALETTES.find((p) => p.id === paletteId) ?? DEFAULT_PALETTE,
+    [paletteId, customRamps, basePalette],
+  )
+
+  const setCustomRamps = useCallback((ramps: Palette['ramps']) => {
+    setCustomRampsRaw(ramps)
+    try {
+      localStorage.setItem(CUSTOM_KEY, JSON.stringify(ramps))
+    } catch {
+      // Storage can be blocked or full. The palette still works this session.
+    }
+  }, [])
+
+  /** Choosing Custom for the first time copies the palette on screen, so it
+   *  starts from something that already works rather than from nothing. */
+  const setPaletteId = useCallback((id: string) => {
+    if (id === CUSTOM_PALETTE_ID) {
+      if (!customRamps) setCustomRamps(basePalette.ramps)
+    } else {
+      setBasePaletteId(id)
+    }
+    setPaletteIdRaw(id)
+  }, [customRamps, basePalette, setCustomRamps])
+
+  const resetCustom = useCallback(
+    () => setCustomRamps(basePalette.ramps),
+    [basePalette, setCustomRamps],
   )
 
   // Prep is the expensive half and depends only on the photo controls, so it
@@ -132,7 +179,7 @@ export function useMosaic() {
     // the glyphs on whatever was already selected.
     if (preset.packId) setPackId(preset.packId)
     if (preset.paletteId) setPaletteId(preset.paletteId)
-  }, [])
+  }, [setPaletteId])
 
   const update = useCallback((patch: Partial<MosaicOptions>) => {
     setOptions((o) => ({ ...o, ...patch }))
@@ -152,6 +199,7 @@ export function useMosaic() {
 
   return {
     source, result, maps, options, pack, packId, palette, paletteId, presetId,
+    customRamps, setCustomRamps, resetCustom, basePalette,
     prep, prepEnabled, suggestPrep, status, buildMs, lift,
     busy: status !== 'idle',
     load, update, applyPreset, reset,

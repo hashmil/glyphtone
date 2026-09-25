@@ -6,7 +6,7 @@ import { Btn, Fader, Section, Segmented, SwitchRow } from '@/components/kit'
 import { GlyphStrip, RampSwatch } from '@/components/specimen'
 import type { Background } from '@/engine/background'
 import { PACKS } from '@/engine/packs'
-import { PALETTES } from '@/engine/palettes'
+import { CUSTOM_PALETTE_ID, PALETTES, ZONE_IDS, ZONE_LABELS, type Palette, type ZoneId } from '@/engine/palettes'
 import { PRESETS } from '@/engine/presets'
 import type { PrepOptions } from '@/engine/prep'
 import type { Method, MosaicOptions } from '@/engine/types'
@@ -19,6 +19,12 @@ export interface ControlsProps {
   onPack: (id: string) => void
   paletteId: string
   onPalette: (id: string) => void
+  /** The user's own ramps, or null before Custom has ever been picked. */
+  customRamps: Palette['ramps'] | null
+  onCustomRamps: (ramps: Palette['ramps']) => void
+  onResetCustom: () => void
+  /** The preset Custom starts from, and Reset goes back to. */
+  basePalette: Palette
   presetId: string
   onPreset: (id: string) => void
   prep: PrepOptions
@@ -141,39 +147,131 @@ function PlacementSection(p: ControlsProps) {
 }
 
 function ColourSection(p: ControlsProps) {
-  const palette = PALETTES.find((x) => x.id === p.paletteId)
+  const custom = p.paletteId === CUSTOM_PALETTE_ID
+  const palette = custom ? { label: 'Custom' } : PALETTES.find((x) => x.id === p.paletteId)
   const pack = PACKS.find((x) => x.id === p.packId)
   const ignored = pack?.mode === 'text'
+  // Before Custom has been used, its tile previews what it would start from.
+  const customPreview: Palette = {
+    id: CUSTOM_PALETTE_ID,
+    label: 'Custom',
+    ramps: p.customRamps ?? p.basePalette.ramps,
+  }
+  const tile = (pal: Palette, on: boolean) => (
+    <button
+      key={pal.id}
+      type="button"
+      aria-pressed={on}
+      onClick={() => p.onPalette(pal.id)}
+      className={cn(
+        'group flex cursor-pointer flex-col gap-2 rounded-sm border p-2 text-left transition-colors',
+        on ? 'border-fg bg-raise' : 'border-rule hover:border-rule-2 hover:bg-raise/60',
+      )}
+    >
+      <RampSwatch palette={pal} className="w-full" />
+      <span className={cn('text-xs', on ? 'text-fg' : 'text-fg-2 group-hover:text-fg')}>
+        {pal.label}
+      </span>
+    </button>
+  )
   return (
     <Section label="Colour" value={palette?.label}>
       <div className={cn('grid grid-cols-3 gap-1.5', ignored && 'opacity-40')}>
-        {PALETTES.map((pal) => {
-          const on = pal.id === p.paletteId
-          return (
-            <button
-              key={pal.id}
-              type="button"
-              aria-pressed={on}
-              onClick={() => p.onPalette(pal.id)}
-              className={cn(
-                'group flex cursor-pointer flex-col gap-2 rounded-sm border p-2 text-left transition-colors',
-                on ? 'border-fg bg-raise' : 'border-rule hover:border-rule-2 hover:bg-raise/60',
-              )}
-            >
-              <RampSwatch palette={pal} className="w-full" />
-              <span className={cn('text-xs', on ? 'text-fg' : 'text-fg-2 group-hover:text-fg')}>
-                {pal.label}
-              </span>
-            </button>
-          )
-        })}
+        {PALETTES.map((pal) => tile(pal, pal.id === p.paletteId))}
+        {tile(customPreview, custom)}
       </div>
+      {custom && !ignored && p.customRamps && (
+        <CustomRamps
+          ramps={p.customRamps}
+          onChange={p.onCustomRamps}
+          onReset={p.onResetCustom}
+          resetLabel={p.basePalette.label}
+        />
+      )}
       <p className="text-fg-2 mt-3 text-xs">
         {ignored
           ? 'Emoji draw in their own colour, so the palette has no effect on this set.'
-          : 'Top to bottom: cool areas, warm areas, focal region. Each runs from pale to deep.'}
+          : custom
+            ? 'Each zone runs from its pale colour, where the image is light, to its deep colour, where it is dark. Saved in this browser.'
+            : 'Top to bottom: cool areas, warm areas, focal region. Each runs from pale to deep.'}
       </p>
     </Section>
+  )
+}
+
+type Rgb = readonly [number, number, number]
+const toHex = (c: Rgb) => `#${c.map((n) => Math.round(n).toString(16).padStart(2, '0')).join('')}`
+const fromHex = (h: string): [number, number, number] =>
+  [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number]
+
+/** Pale and deep for each zone, with the ramp between them drawn as it will be
+ *  used, so the choice is judged as a range rather than as two chips. */
+function CustomRamps({
+  ramps, onChange, onReset, resetLabel,
+}: {
+  ramps: Palette['ramps']
+  onChange: (r: Palette['ramps']) => void
+  onReset: () => void
+  resetLabel: string
+}) {
+  const set = (z: ZoneId, end: 0 | 1, hex: string) => {
+    const next = [...ramps[z]] as [Rgb, Rgb]
+    next[end] = fromHex(hex)
+    onChange({ ...ramps, [z]: next })
+  }
+  return (
+    <div className="border-rule mt-3 space-y-2.5 border-t pt-4">
+      {ZONE_IDS.map((z) => {
+        const [pale, deep] = ramps[z]
+        return (
+          <div key={z} className="flex items-center gap-2">
+            <span className="text-fg-2 w-[76px] shrink-0 text-xs">{ZONE_LABELS[z]}</span>
+            <ColourChip label={`${ZONE_LABELS[z]}, pale`} value={toHex(pale)} onChange={(h) => set(z, 0, h)} />
+            <span
+              className="h-2 min-w-0 flex-1 rounded-[1px]"
+              style={{ backgroundImage: `linear-gradient(90deg, ${toHex(pale)}, ${toHex(deep)})` }}
+              aria-hidden
+            />
+            <ColourChip label={`${ZONE_LABELS[z]}, deep`} value={toHex(deep)} onChange={(h) => set(z, 1, h)} />
+          </div>
+        )
+      })}
+      <div className="flex gap-1.5 pt-1.5">
+        <Btn
+          size="sm"
+          tone="line"
+          title="Use the warm ramp for every zone"
+          onClick={() => onChange({ cool: ramps.warm, warm: ramps.warm, focus: ramps.warm })}
+        >
+          Warm for all
+        </Btn>
+        <Btn size="sm" tone="bare" onClick={onReset}>Reset to {resetLabel}</Btn>
+      </div>
+    </div>
+  )
+}
+
+function ColourChip({
+  label, value, onChange,
+}: {
+  label: string
+  value: string
+  onChange: (hex: string) => void
+}) {
+  return (
+    <label
+      title={`${label}: ${value}`}
+      className="relative size-7 shrink-0 cursor-pointer overflow-hidden rounded-[2px] ring-1 ring-white/15 transition-shadow hover:ring-white/50 focus-within:ring-magenta focus-within:ring-2"
+      style={{ background: value }}
+    >
+      <input
+        type="color"
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 cursor-pointer opacity-0"
+      />
+    </label>
   )
 }
 

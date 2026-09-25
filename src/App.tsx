@@ -41,6 +41,10 @@ export default function App() {
     onPack: m.setPackId,
     paletteId: m.paletteId,
     onPalette: m.setPaletteId,
+    customRamps: m.customRamps,
+    onCustomRamps: m.setCustomRamps,
+    onResetCustom: m.resetCustom,
+    basePalette: m.basePalette,
     presetId: m.presetId,
     onPreset: m.applyPreset,
     prep: m.prep,
@@ -128,7 +132,7 @@ export default function App() {
         <main className="scroll-quiet min-h-0 flex-1 overflow-y-auto">
           <Landing
             packId={m.packId}
-            paletteId={m.paletteId}
+            palette={m.palette}
             onPack={m.setPackId}
             onChoose={picker.open}
             onSample={() => loadSample().then(m.load, (e: Error) => onError(e.message))}

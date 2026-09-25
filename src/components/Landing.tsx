@@ -6,7 +6,7 @@ import { GlyphStrip } from '@/components/specimen'
 import { build } from '@/engine/build'
 import { DEFAULT_OPTIONS, toDensityMaps, type DensityMaps } from '@/engine/mosaic'
 import { PACKS, DEFAULT_PACK, type GlyphPack } from '@/engine/packs'
-import { PALETTES, DEFAULT_PALETTE } from '@/engine/palettes'
+import type { Palette } from '@/engine/palettes'
 import { drawMosaic } from '@/engine/render-canvas'
 import { DEFAULT_BACKGROUND } from '@/engine/background'
 import type { MosaicResult } from '@/engine/types'
@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils'
 
 interface Props {
   packId: string
-  paletteId: string
+  palette: Palette
   onPack: (id: string) => void
   onChoose: () => void
   onSample: () => void
@@ -30,7 +30,7 @@ const HERO_OPTIONS = { cols: 120, valnoise: 0.08 }
 const LOUPE = 176
 const MAG = 5
 
-export function Landing({ packId, paletteId, onPack, onChoose, onSample }: Props) {
+export function Landing({ packId, palette, onPack, onChoose, onSample }: Props) {
   // The sample is a photograph, so it goes through the same prep the workspace
   // applies to photos. Fed in raw it would fill every cell and read as a slab.
   const [maps, setMaps] = useState<DensityMaps | null>(null)
@@ -45,7 +45,6 @@ export function Landing({ packId, paletteId, onPack, onChoose, onSample }: Props
     return () => { live = false }
   }, [])
   const pack = PACKS.find((p) => p.id === packId) ?? DEFAULT_PACK
-  const palette = PALETTES.find((p) => p.id === paletteId) ?? DEFAULT_PALETTE
 
   return (
     <div className="mx-auto w-full max-w-[1440px] px-4 sm:px-8">
@@ -69,7 +68,7 @@ export function Landing({ packId, paletteId, onPack, onChoose, onSample }: Props
         </div>
 
         <div className="lg:col-span-7">
-          <HeroProof maps={maps} pack={pack} paletteId={palette.id} />
+          <HeroProof maps={maps} pack={pack} palette={palette} />
           <div className="mt-8 flex flex-wrap gap-x-1 gap-y-1" role="radiogroup" aria-label="Glyph set">
             {PACKS.map((k) => {
               const on = k.id === pack.id
@@ -103,7 +102,7 @@ export function Landing({ packId, paletteId, onPack, onChoose, onSample }: Props
 /** The sample, drawn by the real renderer, with a loupe that re-renders the
  *  same placements at five times the scale. Zooming a bitmap would show blur
  *  where the export has crisp edges, and the edges are the point. */
-function HeroProof({ maps, pack, paletteId }: { maps: DensityMaps | null; pack: GlyphPack; paletteId: string }) {
+function HeroProof({ maps, pack, palette }: { maps: DensityMaps | null; pack: GlyphPack; palette: Palette }) {
   const boxRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const loupeRef = useRef<HTMLCanvasElement>(null)
@@ -112,11 +111,10 @@ function HeroProof({ maps, pack, paletteId }: { maps: DensityMaps | null; pack: 
 
   const result = useMemo<MosaicResult | null>(() => {
     if (!maps) return null
-    const palette = PALETTES.find((p) => p.id === paletteId) ?? DEFAULT_PALETTE
     return build(maps, pack, palette, {
       ...DEFAULT_OPTIONS, ...HERO_OPTIONS, width: HERO_WIDTH, figureBox: null,
     })
-  }, [maps, pack, paletteId])
+  }, [maps, pack, palette])
 
   useEffect(() => {
     const el = boxRef.current
